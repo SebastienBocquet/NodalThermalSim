@@ -1,0 +1,19 @@
+name: test_nodalthermic
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - make
+  - python
+  - sphinx == 4.4.0
+  - sphinx-autodoc-typehints
+  - sphinx_rtd_theme
+  - doxygen
+  - graphviz
+  - sphinx-math-dollar
+  - sphinxcontrib-bibtex
+  - pandas==1.1.2
+  - pytest=5.4.*
+  - matplotlib==3.1.*
+  - pyyaml==5.3.*
+  - pysolar
