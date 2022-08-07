@@ -54,7 +54,7 @@ def test_observer():
     component_to_solve_list = [wall]
     solver = Solver(component_to_solve_list, fd_transport, DT, TIME_END)
     solver.run()
-    solver.post()
+    # solver.post()
     assert observer.update_count == NB_FRAMES
 
 
