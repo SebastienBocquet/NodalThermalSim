@@ -9,24 +9,28 @@ from Solver import Solver, Observer, FiniteDifferenceTransport
 EXTERIOR_TEMPERATURE = 298.15
 INTERIOR_TEMPERATURE = 293.15
 INIT_WALL_TEMPERATURE = 295.
-
 air_exterior = ConstantComponent(EXTERIOR_TEMPERATURE)
 air_interior = ConstantComponent(INTERIOR_TEMPERATURE)
 CP = 840.0
 K = 0.9
 DENSITY = 2000.0
 brick = Material(CP, DENSITY, K)
+
 RESOLUTION = 10
 THICKNESS = 0.14
 DX = THICKNESS / RESOLUTION
 RESOLUTION = 10
-TIME_END = 10 * 3600.
 DT = 0.9 * DX**2 / (2 * (K / (DENSITY * CP)))
-fd_transport = FiniteDifferenceTransport(DT)
+
+TIME_END = 10 * 3600.
 NB_FRAMES = 5
+OBSERVER_PERIOD = (int)(TIME_END / NB_FRAMES)
+
+fd_transport = FiniteDifferenceTransport(DT)
 neighbours = {'in': air_interior, 'ext': air_exterior}
-wall = Component2D(brick, THICKNESS, INIT_WALL_TEMPERATURE, air_interior, air_exterior, neighbours)
-component_list = [wall, air_interior, air_exterior]
+wall = Component2D(brick, THICKNESS, INIT_WALL_TEMPERATURE, neighbours)
+observer = Observer(0, OBSERVER_PERIOD, TIME_END, RESOLUTION, DT)
+wall_with_observer = Component2D(brick, THICKNESS, INIT_WALL_TEMPERATURE, neighbours, observer)
 
 
 def test_constant_component_bc():
@@ -50,13 +54,12 @@ def test_solver_single_component():
 
 def test_observer():
     # TODO check extreme setup (0 frame, 
-    observer = Observer(0, TIME_END / NB_FRAMES, TIME_END, RESOLUTION, DT)
-    wall = Component2D(brick, THICKNESS, INIT_WALL_TEMPERATURE, air_interior, air_exterior, neighbours, observer)
-    ite_observation0 = (int)(TIME_END / NB_FRAMES / DT)
-    assert observer.is_updated(ite_observation0) is True
-    component_to_solve_list = [wall]
+    for i in range(NB_FRAMES):
+        ite_observation = (int)(i * (int)(OBSERVER_PERIOD / DT))
+        assert observer.is_updated(ite_observation) is True
+
+    component_to_solve_list = [wall_with_observer]
     solver = Solver(component_to_solve_list, fd_transport, DT, TIME_END)
     solver.run()
     assert observer.update_count == NB_FRAMES
-
 

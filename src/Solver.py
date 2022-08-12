@@ -111,8 +111,8 @@ class Solver:
                 if c.observer is not None:
                     if c.observer.is_updated(ite):
                         c.observer.update(c.y, ite)
-                        c.get_wall_heat_flux_in()
-                        c.get_wall_heat_flux_ext()
+                        c.get_neighbour_gradient('in')
+                        c.get_neighbour_gradient('ext')
 
     def post(self,):
         for c in self.components:

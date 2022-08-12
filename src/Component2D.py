@@ -13,6 +13,9 @@ class NodeBase:
     def get_neighbour_val(self, loc):
         raise NotImplementedError
 
+    def get_neighbour_gradient(self, loc):
+        raise NotImplementedError
+
     def update(self):
         raise NotImplementedError
 
@@ -27,6 +30,43 @@ class Node1D(NodeBase):
         assert len(self.neighbours) == 2
 
     neighbour_loc = ['in', 'ext']
+
+
+class Box(NodeBase):
+
+    """Docstring for Box. """
+
+    neighbour_loc = ['south', 'north', 'east', 'west', 'bottom', 'top']
+
+    def __init__(
+        self,
+        material,
+        y0,
+        neighbours,
+        observer=None,
+        volume=1.0
+    ):
+        """TODO: to be defined. """
+
+        super().__init__(neighbours)
+        assert len(self.neighbours) == 6
+        self.material = material
+        self.volume = volume
+        self.y = y0
+        self.sources = 0.
+        self.observer = observer
+        if observer is not None:
+            assert self.observer.result.shape[0] == 1
+
+    def update_sources(self, time):
+        pass
+
+    def advance_time(self):
+        diffusivity = self.material.compute_diffusivity()
+        for n in self.neighbours:
+            self.y += diffusivity * n.get_neighbour_gradient()
+        # + c.sources[:]
+
 
 
 class Material:
@@ -70,8 +110,6 @@ class Component2D(Node1D):
         material,
         thickness,
         y0,
-        component_in_neighbour,
-        component_ext_neighbour,
         neighbours,
         observer=None,
         resolution=10,
@@ -83,8 +121,6 @@ class Component2D(Node1D):
         self.material = material
         # TODO introduce a STENCIL constant.
         self.resolution = resolution
-        # self.component_in_neighbour = component_in_neighbour
-        # self.component_ext_neighbour = component_ext_neighbour
         self.thickness = thickness
         self.surface = surface
         self.y = np.zeros((self.resolution + 2)) + y0
@@ -100,16 +136,18 @@ class Component2D(Node1D):
 
     # TODO rename get_flux, move to FiniteDifferenceTransport, pass the diffusivity.
     # FiniteDifferenceTransport computes the derivative.
-    def get_wall_heat_flux_in(self,):
-        y_border = self.y[:2]
-        wall_heat_flux_in = self.compute_wall_heat_flux(y_border)
-        return wall_heat_flux_in
-
-    def get_wall_heat_flux_ext(self,):
-        y_reverse = self.y[::-1]
-        y_border = y_reverse[:2]
-        wall_heat_flux_ext = self.compute_wall_heat_flux(y_border)
-        return wall_heat_flux_ext
+    def get_neighbour_gradient(self, loc):
+        if loc == 'in':
+            y_border = self.y[:2]
+            wall_heat_flux_in = self.compute_wall_heat_flux(y_border)
+            return wall_heat_flux_in
+        elif loc == 'ext':
+            y_reverse = self.y[::-1]
+            y_border = y_reverse[:2]
+            wall_heat_flux_ext = self.compute_wall_heat_flux(y_border)
+            return wall_heat_flux_ext
+        else:
+            raise ValueError
 
     def get_neighbour_val(self, loc):
         if loc == 'in':
