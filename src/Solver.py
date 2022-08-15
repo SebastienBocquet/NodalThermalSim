@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+HALF_STENCIL = 1
 
 class Observer:
 
@@ -51,6 +52,25 @@ class Observer:
         plt.show()
 
 
+class FiniteVolume:
+
+    """Docstring for FiniteVolume.
+    """
+
+    # y0, y, dx belong to Component. Pass them to FDTransport (or pass the entire Component)
+    def __init__(self, dt):
+        """TODO: to be defined. """
+        self.dt = dt
+
+    def advance_time(self, component):
+        sum_of_fluxes = 0.
+        for neigh in component.neighbours.values():
+            # minus sign because neighbour normal is outward.
+            sum_of_fluxes += -component.material.diffusivity * neigh.get_boundary_gradient('in') * neigh.surface
+        component.y += sum_of_fluxes / component.volume
+        # + c.sources[:]
+
+
 class FiniteDifferenceTransport:
 
     """Docstring for FiniteDifferenceTransport. 
@@ -61,32 +81,28 @@ class FiniteDifferenceTransport:
         """TODO: to be defined. """
         self.dt = dt
 
-    def compute_diffusion(self, c):
-        dydx = np.diff(c.y)
-        diffusion = c.material.diffusivity * (dydx[1:c.resolution + 1] - dydx[:-1]) / c.dx**2
-        # print('y', self.y)
-        # print('diffusion', diffusion)
-        return diffusion
-
     def update_sources(self, time):
         pass
 
-    def advance_time(self, c):
-        c.y[1:c.resolution + 1] += self.dt * self.compute_diffusion(c)[:]
+    def advance_time(self, component):
+        dydx = np.diff(component.y)
+        diffusion = component.material.diffusivity * (dydx[HALF_STENCIL:component.resolution + HALF_STENCIL] - dydx[:-HALF_STENCIL]) / component.dx**2
+        component.y[HALF_STENCIL:component.resolution + HALF_STENCIL] += self.dt * diffusion[:]
         # + c.sources[:]
 
 
+# TODO equation becomes an attribute of the component
 class Solver:
 
     """Docstring for Solver. """
 
-    def __init__(self, component_list, fd_transport, dt, time_end, time_start = 0):
+    def __init__(self, component_list, dt, time_end, time_start = 0.):
         """TODO: to be defined. """
         self.components = component_list
+        # TODO: pass this dt to the equation time advance. Remove dt attribute in equation.
         self.dt = dt
         self.time_start = time_start
         self.time_end = time_end
-        self.fd_transport = fd_transport
 
     def run(self):
         for c in self.components:
@@ -98,9 +114,9 @@ class Solver:
             time = self.time_start + ite * self.dt
             for c in self.components:
                 c.update()
-                c.update_sources(time)
+                # c.update_sources(time)
             for c in self.components:
-                self.fd_transport.advance_time(c)
+                c.physics.advance_time(c)
             if ite % 1 == 0:
                 print("ite", ite)
                 print("time", time)
@@ -111,8 +127,8 @@ class Solver:
                 if c.observer is not None:
                     if c.observer.is_updated(ite):
                         c.observer.update(c.y, ite)
-                        c.get_neighbour_gradient('in')
-                        c.get_neighbour_gradient('ext')
+                        c.get_boundary_gradient('in')
+                        c.get_boundary_gradient('ext')
 
     def post(self,):
         for c in self.components:
