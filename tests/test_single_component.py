@@ -4,11 +4,11 @@ import sys, os
 import numpy as np
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 from Component import ConstantComponent, Material, Component, Box
-from Solver import Solver, Observer, FiniteDifferenceTransport, FiniteVolume
+from Solver import Solver, Observer, FiniteDifferenceTransport, FiniteVolume, Output
 
-T0 = 295.0
-EXTERIOR_TEMPERATURE = 298.15
-INTERIOR_TEMPERATURE = 293.15
+T0 = 273.15 + 25.
+EXTERIOR_TEMPERATURE = 273.15 + 33.
+INTERIOR_TEMPERATURE = T0
 air_exterior = ConstantComponent(EXTERIOR_TEMPERATURE)
 air_interior = ConstantComponent(INTERIOR_TEMPERATURE)
 CP_BRICK = 840.0
@@ -17,36 +17,42 @@ DENSITY_BRICK = 2000.0
 brick = Material(CP_BRICK, DENSITY_BRICK, K_BRICK)
 CP_AIR = 1000.
 DENSITY_AIR = 1.2
-K_AIR = 0.025
+K_AIR = 0.025 * 100
 air = Material(CP_AIR, DENSITY_AIR, K_AIR)
 
 RESOLUTION = 10
 THICKNESS = 0.14
-BOX_SIZE = 1.
+BOX_SIZE = 2.
+BOX_VOLUME = BOX_SIZE ** 3
 DX = THICKNESS / (RESOLUTION-1)
 RESOLUTION = 10
 DT_BRICK = 0.9 * DX**2 / (2 * (K_BRICK / (DENSITY_BRICK * CP_BRICK)))
 DT_AIR = 0.9 * BOX_SIZE**2 / (2 * (K_AIR / (DENSITY_AIR * CP_AIR)))
 DT = min(DT_AIR, DT_BRICK)
-print(DT_BRICK, DT_AIR)
+print('dt air', DT_AIR)
+print('dt brick', DT_BRICK)
 
+TIME_START = 0.
 TIME_END = 20 * 3600.
 NB_FRAMES = 5
 OBSERVER_PERIOD = (int)(TIME_END / NB_FRAMES)
 
-fd_transport = FiniteDifferenceTransport(DT_BRICK)
-fv_equation = FiniteVolume(DT)
 neighbours = {'in': air_interior, 'ext': air_exterior}
 INIT_WALL_TEMPERATURE = np.ones((RESOLUTION)) * T0
-wall = Component(brick, THICKNESS, INIT_WALL_TEMPERATURE, fd_transport, neighbours)
-observer = Observer(0, OBSERVER_PERIOD, TIME_END, RESOLUTION, DT_BRICK)
-wall_with_observer = Component(brick, THICKNESS, INIT_WALL_TEMPERATURE, fd_transport, neighbours, observer=observer)
+wall = Component(brick, THICKNESS, INIT_WALL_TEMPERATURE)
+wall.set_neighbours(neighbours)
+output = Output(True, int(RESOLUTION / 2))
+observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, output)
+wall_with_observer = Component(brick, THICKNESS, INIT_WALL_TEMPERATURE, observer=observer)
+wall_with_observer.set_neighbours(neighbours)
 
-wall_adiabatic = Component(brick, THICKNESS, INIT_WALL_TEMPERATURE, fd_transport, neighbours, {'in': 'adiabatic', 'ext': 'dirichlet'})
+wall_adiabatic = Component(brick, THICKNESS, INIT_WALL_TEMPERATURE, {'in': 'adiabatic', 'ext': 'dirichlet'})
+wall_adiabatic.set_neighbours(neighbours)
 linear_profile = np.linspace(INTERIOR_TEMPERATURE, EXTERIOR_TEMPERATURE, RESOLUTION+2)
 # The temperature is imposed at the ghost nodes. So we add 2 dx to the thickness, to obtain the distance between the ghost nodes.
 expected_gradient = (EXTERIOR_TEMPERATURE - INTERIOR_TEMPERATURE) / (THICKNESS + 2 * DX)
-wall_linear_profile = Component(brick, THICKNESS, linear_profile[1:RESOLUTION+1], fd_transport, neighbours)
+wall_linear_profile = Component(brick, THICKNESS, linear_profile[1:RESOLUTION+1])
+wall_linear_profile.set_neighbours(neighbours)
 
 
 def test_constant_component_bc():
@@ -74,7 +80,8 @@ def test_solver_single_component():
     assert wall.y == approx(expected_y)
 
 def test_observer():
-    # TODO check extreme setup (0 frame, 
+    # TODO check extreme setup. Especially the case of a single frame (typically the last one).
+    wall_with_observer.observer.set_frame_ite(DT_BRICK)
     for i in range(NB_FRAMES):
         ite_observation = (int)(i * (int)(OBSERVER_PERIOD / DT_BRICK))
         assert observer.is_updated(ite_observation) is True
@@ -83,6 +90,7 @@ def test_observer():
     solver = Solver(component_to_solve_list, DT_BRICK, TIME_END)
     solver.run()
     assert observer.update_count == NB_FRAMES
+    # solver.post()
 
 def test_adiabatic_component():
     wall_adiabatic.update()
@@ -94,32 +102,38 @@ def test_box_adiabatic():
     for i in range(6):
         neighbours[f"{i}"] = wall_adiabatic
     wall_adiabatic.update()
-    box = Box(air, T0, fv_equation, neighbours)
+    box = Box(air, T0, BOX_VOLUME)
+    box.set_neighbours(neighbours)
     component_to_solve_list = [box, wall_adiabatic]
     solver = Solver(component_to_solve_list, DT, TIME_END)
     solver.run()
     assert box.y == T0
 
-def test_box_dirichlet():
-    box = Box(air, T0, fv_equation)
-    box_neighbours = {}
-    for i in range(6):
-        box_neighbours[f"{i}"] = air_exterior
-    box.set_neighbours(box_neighbours)
-    component_to_solve_list = [box]
-    solver = Solver(component_to_solve_list, DT, TIME_END)
-    solver.run()
-
 # def test_box_dirichlet():
-#     wall_linear_profile = Component(brick, THICKNESS, linear_profile[1:RESOLUTION+1], fd_transport)
-#     box = Box(air, T0, fv_equation)
+#     box = Box(air, T0)
 #     box_neighbours = {}
 #     for i in range(6):
-#         box_neighbours[f"{i}"] = wall_linear_profile
-#     wall_neighbours = {'in': box, 'ext': air_exterior}
+#         box_neighbours[f"{i}"] = air_exterior
 #     box.set_neighbours(box_neighbours)
-#     wall_linear_profile.set_neighbours(wall_neighbours)
-#
-#     component_to_solve_list = [box, wall_linear_profile]
+#     component_to_solve_list = [box]
 #     solver = Solver(component_to_solve_list, DT, TIME_END)
 #     solver.run()
+
+def test_box_dirichlet():
+    wall_linear_profile = Component(brick, THICKNESS, linear_profile[1:RESOLUTION+1])
+    print(wall_linear_profile.y)
+    output = Output(True, 0)
+    observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, output)
+    box = Box(air, T0, BOX_VOLUME, observer)
+    box_neighbours = {}
+    for i in range(6):
+        box_neighbours[f"{i}"] = wall_linear_profile
+    wall_neighbours = {'in': box, 'ext': air_exterior}
+    box.set_neighbours(box_neighbours)
+    wall_linear_profile.set_neighbours(wall_neighbours)
+
+    component_to_solve_list = [box, wall_linear_profile]
+    solver = Solver(component_to_solve_list, DT, TIME_END)
+    solver.run()
+    solver.post()
+    print(box.observer.ts)
