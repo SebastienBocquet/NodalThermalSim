@@ -1,7 +1,7 @@
-from pytest import approx
-
-import sys, os
+import sys
+import os
 import numpy as np
+from pytest import approx
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 from Component import ConstantComponent, Material, Component, Box
 from Solver import Solver, Observer, FiniteDifferenceTransport, FiniteVolume, Output
@@ -82,8 +82,16 @@ def test_solver_single_component():
 def test_observer():
     # TODO check extreme setup. Especially the case of a single frame (typically the last one).
     wall_with_observer.observer.set_frame_ite(DT_BRICK)
-    for i in range(NB_FRAMES):
+    observed_ite = [1]
+    for i in range(1,NB_FRAMES):
         ite_observation = (int)(i * (int)(OBSERVER_PERIOD / DT_BRICK))
+        observed_ite.append(ite_observation)
+    assert (observed_ite == observer.ite_extraction).all()
+
+    for i in range(1,NB_FRAMES):
+        ite_observation = (int)(i * (int)(OBSERVER_PERIOD / DT_BRICK))
+        observed_ite.append(ite_observation)
+        print(ite_observation)
         assert observer.is_updated(ite_observation) is True
 
     component_to_solve_list = [wall_with_observer]

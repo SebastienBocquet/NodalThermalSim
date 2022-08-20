@@ -41,6 +41,7 @@ class Box(NodeBase):
 
     def __init__(
         self,
+        name,
         material,
         y0,
         volume=1.0,
@@ -49,6 +50,7 @@ class Box(NodeBase):
         """TODO: to be defined. """
 
         # assert len(self.neighbours) == 6
+        self.name = name
         self.material = material
         self.volume = volume
         self.dx = volume ** (1. / 3)
@@ -125,17 +127,19 @@ class Component(Node1D):
 
     def __init__(
         self,
+        name,
         material,
         thickness,
         y0,
         boundary_type={'in': 'dirichlet', 'ext': 'dirichlet'},
-        observer=None,
         resolution=10,
-        surface=1.0
+        surface=1.0,
+        observer=None,
     ):
         """TODO: to be defined. """
 
         super().__init__()
+        self.name = name
         self.material = material
         assert(resolution > 1)
         self.resolution = resolution
