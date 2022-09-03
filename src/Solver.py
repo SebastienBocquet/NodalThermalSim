@@ -1,9 +1,11 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pathlib
 import pandas as pd
 
 HALF_STENCIL = 1
 T0 = 273.15
+OUTPUT_FIG = pathlib.Path('Results')
 
 # TODO: split in a Output class which implements compute_var, and a PostProcess class, which handles the other functions (which are generic).
 class Output():
@@ -141,16 +143,23 @@ class FiniteVolume:
     # y0, y, dx belong to Component. Pass them to FDTransport (or pass the entire Component)
     def __init__(self):
         """TODO: to be defined. """
+        self.delta_temperature = 0.
 
-    def advance_time(self, dt, component):
+    def advance_time(self, dt, component, ite):
+        dydx = np.diff(component.y)
+        diffusion = component.material.diffusivity * (dydx[HALF_STENCIL:component.resolution + HALF_STENCIL] - dydx[:-HALF_STENCIL]) / component.dx**2
+        component.y[HALF_STENCIL:component.resolution + HALF_STENCIL] += dt * diffusion[:]
         sum_of_fluxes = 0.
-        for i, neigh in enumerate(component.neighbours.values()):
-            # minus sign because neighbour normal is outward.
-            sum_of_fluxes += -component.material.diffusivity * neigh.get_boundary_gradient('in') * neigh.surface
-            print('sum of fluxes', sum_of_fluxes)
-            print('gradient', neigh.get_boundary_gradient('in'))
-        component.y[0] += dt * sum_of_fluxes / component.volume
-        print('y', component.y[0])
+        flux_in = component.material.diffusivity * component.get_boundary_gradient('ext') * component.surface
+        flux_ext = component.material.diffusivity * component.get_boundary_gradient('in') * component.surface
+        temp_variation = (flux_in + flux_ext) / component.volume
+        self.delta_temperature += temp_variation * dt
+        if ite % 10000 == 0:
+            print('delta T mean', self.delta_temperature)
+            # print('sum of fluxes', sum_of_fluxes)
+            # print('gradient', neigh.get_boundary_gradient('in'))
+        # component.y[1] += dt * sum_of_fluxes / component.volume
+        # print('y', component.y[1])
         # + c.sources[:]
 
 
@@ -166,7 +175,7 @@ class FiniteDifferenceTransport:
     def update_sources(self, time):
         pass
 
-    def advance_time(self, dt, component):
+    def advance_time(self, dt, component, ite):
         dydx = np.diff(component.y)
         diffusion = component.material.diffusivity * (dydx[HALF_STENCIL:component.resolution + HALF_STENCIL] - dydx[:-HALF_STENCIL]) / component.dx**2
         component.y[HALF_STENCIL:component.resolution + HALF_STENCIL] += dt * diffusion[:]
@@ -203,7 +212,7 @@ class Solver:
                 c.update()
                 # c.update_sources(time)
             for c in self.components:
-                c.physics.advance_time(self.dt, c)
+                c.physics.advance_time(self.dt, c, ite)
             if ite % 10000 == 0:
                 print("ite", ite)
                 print("time", time)

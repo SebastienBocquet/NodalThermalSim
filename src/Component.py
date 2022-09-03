@@ -1,5 +1,7 @@
+import copy
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.interpolate import interp1d
 from Solver import HALF_STENCIL, FiniteDifferenceTransport, FiniteVolume
 
 
@@ -33,51 +35,6 @@ class Node1D(NodeBase):
     def get_boundary_gradient(self, loc):
         raise NotImplementedError
 
-
-# TODO define an equation as attribute
-class Box(NodeBase):
-
-    """Docstring for Box. """
-
-    def __init__(
-        self,
-        name,
-        material,
-        y0,
-        volume=1.0,
-        observer=None
-    ):
-        """TODO: to be defined. """
-
-        # assert len(self.neighbours) == 6
-        self.name = name
-        self.material = material
-        self.volume = volume
-        self.dx = volume ** (1. / 3)
-        self.y = np.ones((1)) * y0
-        self.physics = FiniteVolume()
-        self.sources = 0.
-        self.gradients = np.zeros((6))
-        self.observer = observer
-        if self.observer is not None:
-            observer.set_resolution(1)
-        #TODO set dt of observer here.
-        # put observer in NodeBase.
-        if observer is not None:
-            assert self.observer.result.shape[0] == 1
-
-    # TODO should have a get_boundary_value such that linked components can be updated
-
-    def update(self):
-        pass
-
-    #TODO store gradients (or flux) in a list.
-    # Add boundary_type. Handle case of adiabatic boundary (set to zero flux).
-    def get_boundary_value(self, loc):
-        return self.y[0]
-
-    def get_boundary_gradient(self, loc):
-        return self.gradients[loc]
 
 class Material:
 
@@ -131,6 +88,7 @@ class Component(Node1D):
         material,
         thickness,
         y0,
+        physics,
         boundary_type={'in': 'dirichlet', 'ext': 'dirichlet'},
         resolution=10,
         surface=1.0,
@@ -145,9 +103,10 @@ class Component(Node1D):
         self.resolution = resolution
         self.thickness = thickness
         self.surface = surface
+        self.volume = thickness * surface
         self.y = np.zeros((self.resolution + 2 * HALF_STENCIL))
         self.y[HALF_STENCIL:resolution+HALF_STENCIL] = y0[:]
-        self.physics = FiniteDifferenceTransport()
+        self.physics = physics
         self.sources = np.zeros((self.resolution))
         self.dx = self.thickness / (self.resolution - 1)
         self.boundary_type = boundary_type
