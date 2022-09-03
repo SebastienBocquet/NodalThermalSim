@@ -108,19 +108,20 @@ class Component(Node1D):
         self.y[HALF_STENCIL:resolution+HALF_STENCIL] = y0[:]
         self.physics = physics
         self.sources = np.zeros((self.resolution))
-        self.dx = self.thickness / (self.resolution - 1)
+        self.dx = self.thickness / (self.resolution)
+        self.boundary_loc = {'in': 0, 'ext': resolution}
         self.boundary_type = boundary_type
         self.observer = observer
         if self.observer is not None:
-            observer.set_resolution(resolution + 2 * HALF_STENCIL)
-        #TODO set dt of observer here.
-        if observer is not None:
-            assert self.observer.result.shape[0] == self.resolution + 2 * HALF_STENCIL
+            observer.set_output_container(self)
 
     def __compute_gradient(self, y):
         # this implementation works only for 1 ghost point, ie HALF_STENCIL=1.
         assert len(y) == 2
         return -(y[1] - y[0]) / self.dx
+
+    def get_physics_y(self):
+        return self.y[HALF_STENCIL:self.resolution+HALF_STENCIL]
 
     # TODO rename get_flux, move to FiniteDifferenceTransport, pass the diffusivity.
     # FiniteDifferenceTransport computes the derivative.

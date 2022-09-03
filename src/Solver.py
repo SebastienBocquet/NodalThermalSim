@@ -3,6 +3,10 @@ import numpy as np
 import pathlib
 import pandas as pd
 
+# 0 means the output size is the component resolution.
+# otherwise the size is 1
+OUTPUT_SIZE = {'temperature': 0, 'temperature_gradient': 1, 'HTC': 1}
+
 HALF_STENCIL = 1
 T0 = 273.15
 OUTPUT_FIG = pathlib.Path('Results')
@@ -12,7 +16,7 @@ class Output():
 
     """Docstring for Output. """
 
-    def __init__(self, index_temporal, var_name='temperature', spatial_type='raw', temporal_type='instantaneous', loc='all'):
+    def __init__(self, index_temporal, var_name, spatial_type='raw', temporal_type='instantaneous', loc='all'):
         """TODO: to be defined. """
 
         self.var_name = var_name
@@ -21,26 +25,57 @@ class Output():
         self.loc = loc
         self.index_temporal = index_temporal
         self.temporal_mean = 0.
+        pathlib.Path(OUTPUT_FIG).mkdir(parents=True, exist_ok=True)
+
+    def set_size(self, c):
+        x = np.linspace(0, c.resolution * c.dx, num=c.resolution)
+        if self.spatial_type == 'raw':
+            if OUTPUT_SIZE[self.var_name] == 0:
+                self.size = c.resolution
+                self.x = x
+            elif OUTPUT_SIZE[self.var_name] == 1:
+                self.size = 1
+                self.x = np.array(x[c.boundary_loc[self.loc]])
+        elif self.spatial_type == 'mean':
+            self.size = 1
+            self.x = np.array(x[int(c.resolution/2)])
 
     def compute_var(self, c):
         if self.var_name == 'temperature':
             if self.loc == 'all':
-                return c.y
+                return c.get_physics_y()
             else:
                 return np.array([c.get_boundary_value(self.loc)])
         elif self.var_name == 'temperature_gradient':
             return np.array([c.get_boundary_gradient(self.loc)])
+        elif self.var_name == 'HTC':
+            surface_temperature = 0.
+            ref_temperature = 0.
+            if self.loc == 'in':
+                # TODO introduce a get_ghost_value()[self.loc]
+                surface_temperature = 0.5 * (c.y[0] + c.get_physics_y()[0])
+                ref_temperature = c.get_physics_y()[0]
+            else:
+                # TODO introduce a get_ghost_value()[self.loc]
+                surface_temperature = 0.5 * (c.get_physics_y()[-1] + c.y[c.resolution + 1])
+                ref_temperature = c.get_physics_y()[-1]
+            htc = c.material.thermal_conductivty * c.get_boundary_gradient(self.loc) / (surface_temperature - ref_temperature)
+            return np.array([htc])
+
 
     def compute_instantaneous(self, c):
         if self.spatial_type == 'raw':
-            return self.compute_var(c)[self.index_temporal]
-        elif self.spatial_mean == 'spatial_mean':
+            if len(self.compute_var(c)) == 1:
+                return self.compute_var(c)[0]
+            else:
+                return self.compute_var(c)[self.index_temporal]
+        elif self.spatial_type == 'mean':
             return np.mean(self.compute_var(c))
         else:
             raise ValueError
 
     def compute_temporal(self, c):
-        if self.temporal_type == 'temporal_mean':
+        if self.temporal_type == 'mean':
             raise NotImplemented
         elif self.temporal_type == 'instantaneous':
             return self.compute_instantaneous(c)
@@ -69,7 +104,6 @@ class Observer:
         self.dt = 0.
         self.ite_start = 0
         self.ite_period = 0
-        self.nb_data_per_time = 0
         self.nb_frames = (int)((time_end - time_start) / time_period)
         self.ite_extraction = np.empty((self.nb_frames))
         print("nb frames", self.nb_frames)
@@ -82,10 +116,12 @@ class Observer:
         self.temporal_axis = []
         self.temporal = np.zeros((self.nb_frames, len(self.outputs)))
 
-    def set_resolution(self, nb_data_per_time):
-        self.nb_data_per_time = nb_data_per_time
-        #TODO result becomes attribute of Output. nb_data_per_time is adpated for each output.
-        self.result = np.zeros((nb_data_per_time, self.nb_frames, len(self.outputs)))
+    # add a set_output func.
+
+    def set_output_container(self, c):
+        for o in self.outputs:
+            o.set_size(c)
+            o.result = np.zeros((o.size, self.nb_frames))
 
     def set_frame_ite(self, dt):
         assert self.time_period >= dt
@@ -104,10 +140,10 @@ class Observer:
     def update(self, c, ite):
         print("observer is updated")
         self.temporal_axis.append(self.__get_time(ite))
-        for io,output in enumerate(self.outputs):
+        for io, output in enumerate(self.outputs):
             self.temporal[self.update_count, io] = output.compute_temporal(c)
-        for io,output in enumerate(self.outputs):
-            self.result[:, self.update_count, io] = output.compute_spatial(c)
+        for io, output in enumerate(self.outputs):
+            output.result[:, self.update_count] = output.compute_spatial(c)
         assert self.update_count < self.nb_frames
         self.update_count += 1
 
@@ -115,16 +151,16 @@ class Observer:
         return ite in self.ite_extraction
 
     def plot(self, c):
-        fig, ax = plt.subplots()
-        resolution = self.result.shape[0]
-        x = np.linspace(0, resolution * c.dx, num=resolution)
         for io, output in enumerate(self.outputs):
-            for i in range(self.nb_frames):
-                time = self.__get_time(self.ite_extraction[i])
-                ax.plot(x, self.result[:, i, io], label="t=%ds" % time, linewidth=2.0)
-            ax.legend()
-            plt.title(f"Component {c.name}, {output.spatial_type} value of {output.var_name}")
-            plt.show()
+            if output.size > 1:
+                fig, ax = plt.subplots()
+                for i in range(self.nb_frames):
+                    time = self.__get_time(self.ite_extraction[i])
+                    ax.plot(output.x, output.result[:, i], '-o', label="t=%ds" % time, linewidth=2.0)
+                ax.legend()
+                plt.title(f"Component {c.name}, {output.spatial_type} value of {output.var_name}")
+                plt.savefig(OUTPUT_FIG / f"Component_{c.name}_{output.spatial_type}_{output.var_name}.png")
+                # plt.show()
 
     def plot_temporal(self, c):
         for io, output in enumerate(self.outputs):
@@ -132,7 +168,8 @@ class Observer:
             ax.plot(self.temporal_axis, np.array(self.temporal[:,io]), label=f"{output.var_name}[{output.index_temporal}]", linewidth=2.0)
             ax.legend()
             plt.title(f"Component {c.name}, {output.temporal_type} value of {output.var_name}")
-            plt.show()
+            plt.savefig(OUTPUT_FIG / f"Component_{c.name}_{output.temporal_type}_{output.var_name}.png")
+            # plt.show()
 
 
 class FiniteVolume:
@@ -217,7 +254,7 @@ class Solver:
                 print("ite", ite)
                 print("time", time)
                 for c in self.components:
-                    print(c.y)
+                    print(c.get_physics_y())
                     print("")
             for c in self.components:
                 if c.observer is not None:
