@@ -105,10 +105,11 @@ class Component(Node1D):
         self.surface = surface
         self.volume = thickness * surface
         self.y = np.zeros((self.resolution + 2 * HALF_STENCIL))
+        assert len(y0) == resolution
         self.y[HALF_STENCIL:resolution+HALF_STENCIL] = y0[:]
         self.physics = physics
         self.sources = np.zeros((self.resolution))
-        self.dx = self.thickness / (self.resolution)
+        self.dx = self.thickness / (self.resolution - 1)
         self.boundary_loc = {'in': 0, 'ext': resolution-1}
         self.boundary_type = boundary_type
         self.observer = observer
