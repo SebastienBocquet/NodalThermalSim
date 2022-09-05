@@ -16,7 +16,7 @@ class NodeBase:
         self.neighbours = None
         self.neighbour_faces = None
 
-    def set_neighbours(self, neighbours, faces):
+    def set_neighbours(self, neighbours, faces={'in': 'ext', 'ext': 'in'}):
         self.neighbours = neighbours
         self.neighbour_faces = faces
         assert self.neighbours.keys() == self.neighbour_faces.keys()
