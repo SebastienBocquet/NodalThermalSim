@@ -4,6 +4,8 @@ import numpy as np
 from scipy.interpolate import interp1d
 from Solver import HALF_STENCIL, FiniteDifferenceTransport, FiniteVolume
 
+GHOST_INDEX = {'in': 0, 'ext': -1}
+FIRST_PHYS_VAL_INDEX = {'in': 1, 'ext': -2}
 
 class NodeBase:
 
@@ -12,9 +14,12 @@ class NodeBase:
     def __init__(self):
         """TODO: to be defined. """
         self.neighbours = None
+        self.neighbour_faces = None
 
-    def set_neighbours(self, n):
-        self.neighbours = n
+    def set_neighbours(self, neighbours, faces):
+        self.neighbours = neighbours
+        self.neighbour_faces = faces
+        assert self.neighbours.keys() == self.neighbour_faces.keys()
 
     def get_boundary_value(self, loc):
             raise NotImplementedError
@@ -116,36 +121,19 @@ class Component(Node1D):
         if self.observer is not None:
             observer.set_output_container(self)
 
-    def __compute_gradient(self, y):
-        # this implementation works only for 1 ghost point, ie HALF_STENCIL=1.
-        assert len(y) == 2
-        return -(y[1] - y[0]) / self.dx
-
     def get_physics_y(self):
         return self.y[HALF_STENCIL:self.resolution+HALF_STENCIL]
+
+    def setGhostValue(self, face, val):
+        self.y[GHOST_INDEX[face]] = val
 
     # TODO rename get_flux, move to FiniteDifferenceTransport, pass the diffusivity.
     # FiniteDifferenceTransport computes the derivative.
     def get_boundary_gradient(self, loc):
-        if loc == 'in':
-            y_border = self.y[:2]
-            wall_heat_flux_in = self.__compute_gradient(y_border)
-            return wall_heat_flux_in
-        elif loc == 'ext':
-            y_reverse = self.y[::-1]
-            y_border = y_reverse[:2]
-            wall_heat_flux_ext = self.__compute_gradient(y_border)
-            return wall_heat_flux_ext
-        else:
-            raise ValueError
+        return (self.y[GHOST_INDEX[loc]] - self.get_boundary_value(loc)) / self.dx
 
     def get_boundary_value(self, loc):
-        if loc == 'in':
-            return self.y[1]
-        elif loc == 'ext':
-            return self.y[self.resolution]
-        else:
-            raise ValueError
+        return self.y[FIRST_PHYS_VAL_INDEX[loc]]
 
     # TODO rename update_ghost_node
     def update(self):
@@ -153,23 +141,17 @@ class Component(Node1D):
         # use a list of opposite index to automatically access the other link.
         assert(HALF_STENCIL == 1)
 
-        # TODO: loop on the two boundaries
-        if self.boundary_type['in'] == 'dirichlet':
-            # fill ghost node with the neighbour first physical node value.
-            self.y[0] = self.neighbours['in'].get_boundary_value('ext')
-        elif self.boundary_type['in'] == 'adiabatic':
-            # fill ghost node with first physical node value.
-            # TODO implement a get_first_physical_value function
-            self.y[0] = self.y[1]
-        else:
-            raise ValueError
-
-        if self.boundary_type['ext'] == 'dirichlet':
-            self.y[self.resolution + 1] = self.neighbours['ext'].get_boundary_value('in')
-        elif self.boundary_type['ext'] == 'adiabatic':
-            self.y[self.resolution + 1] = self.y[self.resolution]
-        else:
-            raise ValueError
+        for face, neigh in self.neighbours.items():
+           if self.boundary_type[face] == 'dirichlet':
+               # fill ghost node with the neighbour first physical node value.
+               # self.setGhostValue(face, neigh.y[FIRST_PHYS_VAL_INDEX[self.neighbour_faces[face]]])
+               self.setGhostValue(face, neigh.get_boundary_value(self.neighbour_faces[face]))
+           elif self.boundary_type['in'] == 'adiabatic':
+               # fill ghost node with first physical node value.
+               # TODO implement a get_first_physical_value function
+               self.setGhostValue(face, self.y[FIRST_PHYS_VAL_INDEX[face]])
+           else:
+               raise ValueError
 
     def update_sources(self, time):
         pass

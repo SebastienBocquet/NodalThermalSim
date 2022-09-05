@@ -34,21 +34,22 @@ OBSERVER_PERIOD = (int)(TIME_END / NB_FRAMES)
 output_temperature = Output(int(RESOLUTION / 2), var_name='temperature')
 
 neighbours = {'in': air_interior, 'ext': air_exterior}
+neighbour_faces = {'in': 'ext', 'ext': 'in'}
 INIT_WALL_TEMPERATURE = np.ones((RESOLUTION)) * T0
 
 observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, [output_temperature])
 wall = Component('wall', brick, THICKNESS, INIT_WALL_TEMPERATURE, FiniteDifferenceTransport(), resolution=RESOLUTION, surface=1., observer=observer)
 # wall = Component(brick, THICKNESS, INIT_WALL_TEMPERATURE)
-wall.set_neighbours(neighbours)
+wall.set_neighbours(neighbours, neighbour_faces)
 
 linear_profile = np.linspace(INTERIOR_TEMPERATURE, EXTERIOR_TEMPERATURE, RESOLUTION+2)
 # The temperature is imposed at the ghost nodes. So we add 2 dx to the thickness, to obtain the distance between the ghost nodes.
 expected_gradient = (EXTERIOR_TEMPERATURE - INTERIOR_TEMPERATURE) / (THICKNESS + 2 * DX)
 wall_linear_profile = Component('wall_linear_profile', brick, THICKNESS, linear_profile[1:RESOLUTION+1], FiniteDifferenceTransport(), resolution=RESOLUTION, surface=1., observer=observer)
-wall_linear_profile.set_neighbours(neighbours)
+wall_linear_profile.set_neighbours(neighbours, neighbour_faces)
 
 wall_adiabatic = Component('wall_adiabatic', brick, THICKNESS, INIT_WALL_TEMPERATURE, FiniteDifferenceTransport(), boundary_type={'in': 'adiabatic', 'ext': 'dirichlet'}, resolution=RESOLUTION, surface=1., observer=observer)
-wall_adiabatic.set_neighbours(neighbours)
+wall_adiabatic.set_neighbours(neighbours, neighbour_faces)
 
 def test_constant_component_bc():
     assert air_exterior.get_boundary_value('in') == approx(EXTERIOR_TEMPERATURE)
