@@ -29,16 +29,14 @@ class Output():
 
     def set_size(self, c):
         x = np.linspace(0, c.resolution * c.dx, num=c.resolution)
-        if self.spatial_type == 'raw':
-            if OUTPUT_SIZE[self.var_name] == 0:
-                self.size = c.resolution
-                self.x = x
-            elif OUTPUT_SIZE[self.var_name] == 1:
-                self.size = 1
-                self.x = np.array(x[c.boundary_loc[self.loc]])
-        elif self.spatial_type == 'mean':
+        if OUTPUT_SIZE[self.var_name] == 0:
+            self.size = c.resolution
+            self.x = x
+        elif OUTPUT_SIZE[self.var_name] == 1:
             self.size = 1
-            self.x = np.array(x[int(c.resolution/2)])
+            self.x = np.array(x[c.boundary_loc[self.loc]])
+        else:
+            raise ValueError
 
     def compute_var(self, c):
         if self.var_name == 'temperature':
@@ -70,7 +68,7 @@ class Output():
             else:
                 return self.compute_var(c)[self.index_temporal]
         elif self.spatial_type == 'mean':
-            return np.mean(self.compute_var(c))
+            return np.array([np.mean(self.compute_var(c))])
         else:
             raise ValueError
 
@@ -158,17 +156,28 @@ class Observer:
                     time = self.__get_time(self.ite_extraction[i])
                     ax.plot(output.x, output.result[:, i], '-o', label="t=%ds" % time, linewidth=2.0)
                 ax.legend()
-                plt.title(f"Component {c.name}, {output.spatial_type} value of {output.var_name}")
-                plt.savefig(OUTPUT_FIG / f"Component_{c.name}_{output.spatial_type}_{output.var_name}.png")
+                plt.title(f"Component {c.name}, raw value of {output.var_name}")
+                plt.savefig(OUTPUT_FIG / f"Component_{c.name}_raw_{output.var_name}.png")
                 # plt.show()
 
     def plot_temporal(self, c):
         for io, output in enumerate(self.outputs):
             fig, ax = plt.subplots()
-            ax.plot(self.temporal_axis, np.array(self.temporal[:,io]), label=f"{output.var_name}[{output.index_temporal}]", linewidth=2.0)
+            ax.plot(self.temporal_axis, np.array(self.temporal[:,io]), label=f"{output.var_name}", linewidth=2.0)
             ax.legend()
-            plt.title(f"Component {c.name}, {output.temporal_type} value of {output.var_name}")
-            plt.savefig(OUTPUT_FIG / f"Component_{c.name}_{output.temporal_type}_{output.var_name}.png")
+            loc = 0
+            loc_prefix = ''
+            if output.spatial_type == 'raw':
+                loc_prefix = 'at loc_'
+                if output.loc == 'all':
+                    loc = output.index_temporal
+                else:
+                    loc = output.loc
+            else:
+                loc_prefix = ''
+                loc = ''
+            plt.title(f"Component {c.name}, {output.temporal_type} value of {output.spatial_type} spatial {output.var_name} {loc_prefix}{loc}")
+            plt.savefig(OUTPUT_FIG / f"Component_{c.name}_{output.temporal_type}_of_{output.spatial_type}_spatial_{output.var_name}_{loc_prefix}{loc}.png")
             # plt.show()
 
 

@@ -41,7 +41,8 @@ output_gradient_in = Output(0, var_name='temperature_gradient', loc='in')
 
 
 def test_raw_output():
-    observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, [output_temperature, output_gradient_in])
+    observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, [output_temperature, output_gradient_in, output_gradient_ext, output_temperature_space_avg])
+    # observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, [output_temperature_space_avg])
     room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), resolution=RESOLUTION, surface=BOX_DEPTH*BOX_HEIGHT, observer=observer)
     room.set_neighbours(neighbours)
     component_to_solve_list = [room]

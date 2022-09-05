@@ -109,7 +109,7 @@ class Component(Node1D):
         self.physics = physics
         self.sources = np.zeros((self.resolution))
         self.dx = self.thickness / (self.resolution)
-        self.boundary_loc = {'in': 0, 'ext': resolution}
+        self.boundary_loc = {'in': 0, 'ext': resolution-1}
         self.boundary_type = boundary_type
         self.observer = observer
         if self.observer is not None:
