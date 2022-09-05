@@ -79,27 +79,6 @@ def test_solver_single_component():
     expected_y = np.linspace(INTERIOR_TEMPERATURE, EXTERIOR_TEMPERATURE, RESOLUTION+2)
     assert wall.y == approx(expected_y)
 
-def test_observer():
-    # TODO check extreme setup. Especially the case of a single frame (typically the last one).
-    wall_with_observer.observer.set_frame_ite(DT_BRICK)
-    observed_ite = [1]
-    for i in range(1,NB_FRAMES):
-        ite_observation = (int)(i * (int)(OBSERVER_PERIOD / DT_BRICK))
-        observed_ite.append(ite_observation)
-    assert (observed_ite == observer.ite_extraction).all()
-
-    for i in range(1,NB_FRAMES):
-        ite_observation = (int)(i * (int)(OBSERVER_PERIOD / DT_BRICK))
-        observed_ite.append(ite_observation)
-        print(ite_observation)
-        assert observer.is_updated(ite_observation) is True
-
-    component_to_solve_list = [wall_with_observer]
-    solver = Solver(component_to_solve_list, DT_BRICK, TIME_END)
-    solver.run()
-    assert observer.update_count == NB_FRAMES
-    # solver.post()
-
 def test_adiabatic_component():
     wall_adiabatic.update()
     assert wall_adiabatic.y[0] == wall_adiabatic.y[1]

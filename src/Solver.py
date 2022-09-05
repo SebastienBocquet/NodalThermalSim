@@ -110,7 +110,7 @@ class Observer:
         #     data.append(np.zeros((nb_data_per_time)))
         # self.ts = pd.Series(data, range(self.nb_frames))
         self.update_count = 0
-        print("time_period", self.time_period)
+        print("time period", self.time_period)
         self.temporal_axis = []
         self.temporal = np.zeros((self.nb_frames, len(self.outputs)))
 
@@ -124,13 +124,14 @@ class Observer:
     def set_frame_ite(self, dt):
         assert self.time_period >= dt
         self.dt = dt
+        print("nb ite period", (int)(self.time_period / self.dt))
         self.ite_start = (int)(self.time_start / dt)
         self.ite_period = (int)(self.time_period / dt)
         for i in range(self.nb_frames):
             self.ite_extraction[i] = (int)(self.ite_start + i * self.ite_period)
         if self.ite_extraction[0] == 0:
             self.ite_extraction[0] = 1
-        print(self.ite_extraction)
+        print('data extract at ite', self.ite_extraction)
 
     def __get_time(self, ite):
         return self.time_start + ite * self.dt
@@ -245,7 +246,7 @@ class Solver:
                 c.observer.set_frame_ite(self.dt)
             print('dt', self.dt)
             print('dx', c.dx)
-            print('diff', c.material.diffusivity)
+            print('diffusivity', c.material.diffusivity)
             if (self.dt / c.dx ** 2) >= 1.0 / (2 * c.material.diffusivity):
                 raise ValueError
 
