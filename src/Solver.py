@@ -5,7 +5,15 @@ import pandas as pd
 
 # 0 means the output size is the component resolution.
 # otherwise the size is 1
-OUTPUT_SIZE = {'temperature': 0, 'temperature_gradient': 1, 'HTC': 1}
+def OUTPUT_SIZE(var_name, resolution):
+    if var_name == 'temperature':
+        return resolution
+    elif var_name == 'temperature_gradient':
+        return resolution - 1
+    elif var_name == 'heat_flux':
+        return resolution - 1
+    elif var_name == 'HTC':
+        return 1
 
 HALF_STENCIL = 1
 T0 = 273.15
@@ -16,7 +24,7 @@ class Output():
 
     """Docstring for Output. """
 
-    def __init__(self, index_temporal, var_name, spatial_type='raw', temporal_type='instantaneous', loc='all'):
+    def __init__(self, var_name, index_temporal=-1, spatial_type='raw', temporal_type='instantaneous', loc='all'):
         """TODO: to be defined. """
 
         self.var_name = var_name
@@ -25,18 +33,21 @@ class Output():
         self.loc = loc
         self.index_temporal = index_temporal
         self.temporal_mean = 0.
+        self.result = np.empty((1,1))
         pathlib.Path(OUTPUT_FIG).mkdir(parents=True, exist_ok=True)
 
-    def set_size(self, c):
+    def set_size(self, c, nb_frames):
         x = np.linspace(0, c.resolution * c.dx, num=c.resolution)
-        if OUTPUT_SIZE[self.var_name] == 0:
-            self.size = c.resolution
-            self.x = x
-        elif OUTPUT_SIZE[self.var_name] == 1:
-            self.size = 1
-            self.x = np.array(x[c.boundary_loc[self.loc]])
+        if self.loc == 'all':
+            self.size = OUTPUT_SIZE(self.var_name, c.resolution)
+            self.x = x[:self.size]
+            if self.index_temporal == -1:
+                self.index_temporal = 1 #TODO debug. (int)(self.size/2)
+            #TODO: handle case of size 1 with loc=all
         else:
-            raise ValueError
+            self.size = 1
+            self.x = np.array(x[c.first_phys_val_index[self.loc]])
+        self.result.resize((self.size, nb_frames))
 
     def compute_var(self, c):
         if self.var_name == 'temperature':
@@ -45,7 +56,15 @@ class Output():
             else:
                 return np.array([c.get_boundary_value(self.loc)])
         elif self.var_name == 'temperature_gradient':
-            return np.array([c.get_boundary_gradient(self.loc)])
+            if self.loc == 'all':
+                return np.diff(c.get_physics_y())
+            else:
+                return np.array([c.get_boundary_gradient(self.loc)])
+        elif self.var_name == 'heat_flux':
+            if self.loc == 'all':
+                return c.material.thermal_conductivty * np.diff(c.get_physics_y())
+            else:
+                return np.array([c.material.thermal_conductivty * c.get_boundary_gradient(self.loc)])
         elif self.var_name == 'HTC':
             surface_temperature = 0.
             ref_temperature = 0.
@@ -118,8 +137,7 @@ class Observer:
 
     def set_output_container(self, c):
         for o in self.outputs:
-            o.set_size(c)
-            o.result = np.zeros((o.size, self.nb_frames))
+            o.set_size(c, self.nb_frames)
 
     def set_frame_ite(self, dt):
         assert self.time_period >= dt
@@ -141,7 +159,6 @@ class Observer:
         self.temporal_axis.append(self.__get_time(ite))
         for io, output in enumerate(self.outputs):
             self.temporal[self.update_count, io] = output.compute_temporal(c)
-        for io, output in enumerate(self.outputs):
             output.result[:, self.update_count] = output.compute_spatial(c)
         assert self.update_count < self.nb_frames
         self.update_count += 1
@@ -157,7 +174,7 @@ class Observer:
                     time = self.__get_time(self.ite_extraction[i])
                     ax.plot(output.x, output.result[:, i], '-o', label="t=%ds" % time, linewidth=2.0)
                 ax.legend()
-                plt.title(f"Component {c.name}, raw value of {output.var_name}")
+                plt.title(f"Component {c.name}\n raw value of {output.var_name}")
                 plt.savefig(OUTPUT_FIG / f"Component_{c.name}_raw_{output.var_name}.png")
                 # plt.show()
 
@@ -177,56 +194,9 @@ class Observer:
             else:
                 loc_prefix = ''
                 loc = ''
-            plt.title(f"Component {c.name}, {output.temporal_type} value of {output.spatial_type} spatial {output.var_name} {loc_prefix}{loc}")
+            plt.title(f"Component {c.name}\n {output.temporal_type} value of\n {output.spatial_type} spatial {output.var_name} {loc_prefix}{loc}")
             plt.savefig(OUTPUT_FIG / f"Component_{c.name}_{output.temporal_type}_of_{output.spatial_type}_spatial_{output.var_name}_{loc_prefix}{loc}.png")
             # plt.show()
-
-
-class FiniteVolume:
-
-    """Docstring for FiniteVolume.
-    """
-
-    # y0, y, dx belong to Component. Pass them to FDTransport (or pass the entire Component)
-    def __init__(self):
-        """TODO: to be defined. """
-        self.delta_temperature = 0.
-
-    def advance_time(self, dt, component, ite):
-        dydx = np.diff(component.y)
-        diffusion = component.material.diffusivity * (dydx[HALF_STENCIL:component.resolution + HALF_STENCIL] - dydx[:-HALF_STENCIL]) / component.dx**2
-        component.y[HALF_STENCIL:component.resolution + HALF_STENCIL] += dt * diffusion[:]
-        sum_of_fluxes = 0.
-        flux_in = component.material.diffusivity * component.get_boundary_gradient('ext') * component.surface
-        flux_ext = component.material.diffusivity * component.get_boundary_gradient('in') * component.surface
-        temp_variation = (flux_in + flux_ext) / component.volume
-        self.delta_temperature += temp_variation * dt
-        if ite % 10000 == 0:
-            print('delta T mean', self.delta_temperature)
-            # print('sum of fluxes', sum_of_fluxes)
-            # print('gradient', neigh.get_boundary_gradient('in'))
-        # component.y[1] += dt * sum_of_fluxes / component.volume
-        # print('y', component.y[1])
-        # + c.sources[:]
-
-
-class FiniteDifferenceTransport:
-
-    """Docstring for FiniteDifferenceTransport. 
-    """
-
-    # y0, y, dx belong to Component. Pass them to FDTransport (or pass the entire Component)
-    def __init__(self):
-        """TODO: to be defined. """
-
-    def update_sources(self, time):
-        pass
-
-    def advance_time(self, dt, component, ite):
-        dydx = np.diff(component.y)
-        diffusion = component.material.diffusivity * (dydx[HALF_STENCIL:component.resolution + HALF_STENCIL] - dydx[:-HALF_STENCIL]) / component.dx**2
-        component.y[HALF_STENCIL:component.resolution + HALF_STENCIL] += dt * diffusion[:]
-        # + c.sources[:]
 
 
 # TODO equation becomes an attribute of the component
@@ -242,6 +212,7 @@ class Solver:
         self.time_start = time_start
         self.time_end = time_end
         for c in self.components:
+            c.check()
             if c.observer is not None:
                 c.observer.set_frame_ite(self.dt)
             print('dt', self.dt)
@@ -256,8 +227,7 @@ class Solver:
         for ite in range(1, nb_ite):
             time = self.time_start + ite * self.dt
             for c in self.components:
-                c.update()
-                # c.update_sources(time)
+                c.update(time)
             for c in self.components:
                 c.physics.advance_time(self.dt, c, ite)
             if ite % 10000 == 0:

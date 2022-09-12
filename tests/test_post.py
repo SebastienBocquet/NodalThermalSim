@@ -21,7 +21,7 @@ RESOLUTION = 10
 BOX_DEPTH = 1.
 BOX_WIDTH = 2.
 BOX_HEIGHT = 2.5
-DX = BOX_WIDTH / (RESOLUTION)
+DX = BOX_WIDTH / (RESOLUTION - 1)
 DT = 0.9 * DX**2 / (2 * (K_AIR / (DENSITY_AIR * CP_AIR)))
 
 TIME_START = 0.
@@ -72,4 +72,6 @@ def test_raw_output():
     solver = Solver(component_to_solve_list, DT, TIME_END)
     solver.run()
     solver.post()
+    assert output_temperature.size == RESOLUTION
+    assert (output_temperature.x == np.linspace(0, RESOLUTION * DX, num=RESOLUTION)).all()
 
