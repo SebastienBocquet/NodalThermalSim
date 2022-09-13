@@ -42,10 +42,10 @@ TIME_END = 1 * 3600.
 NB_FRAMES = 5
 OBSERVER_PERIOD = (int)(TIME_END / NB_FRAMES)
 
-output_temperature = Output(int(RESOLUTION / 2), var_name='temperature', spatial_type='mean')
+output_temperature = Output('temperature', int(RESOLUTION / 2), spatial_type='mean')
 
-neighbours = {'in': air_interior, 'ext': air_exterior}
-neighbour_faces = {'in': 'ext', 'ext': 'in'}
+neighbours = {'left': air_interior, 'right': air_exterior}
+neighbour_faces = {'left': 'right', 'right': 'left'}
 INIT_WALL_TEMPERATURE = T0
 
 observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, [output_temperature])
@@ -56,16 +56,16 @@ wall_left = copy.deepcopy(wall)
 wall_right = copy.deepcopy(wall)
 
 # 50W source
-s = Source(50. / ROOM_VOLUME)
-air = Room('air', air, ROOM_WIDTH, INIT_WALL_TEMPERATURE, FiniteDifferenceTransport(), dx=DX, surface=YZ_SURFACE, source=s, observer=observer)
+# s = Source(50. / ROOM_VOLUME)
+air = Room('air', air, ROOM_WIDTH, INIT_WALL_TEMPERATURE, FiniteDifferenceTransport(), dx=DX, surface=YZ_SURFACE, observer=observer)
 
-wall_left.set_neighbours({'in': air_exterior, 'ext': air}, {'in': 'ext', 'ext': 'left'})
+wall_left.set_neighbours({'left': air_exterior, 'right': air}, {'left': 'right', 'right': 'left'})
 wall_left.name = 'wall left'
-wall_right.set_neighbours({'in': air, 'ext': air_exterior}, {'in': 'right', 'ext': 'in'})
+wall_right.set_neighbours({'left': air, 'right': air_exterior}, {'left': 'right', 'right': 'left'})
 wall_right.name = 'wall right'
 
 neighbours = {'left': wall_left, 'right': wall_right}
-neighbour_faces = {'left': 'ext', 'right': 'in'}
+neighbour_faces = {'left': 'right', 'right': 'left'}
 air.set_neighbours(neighbours, neighbour_faces)
 
 

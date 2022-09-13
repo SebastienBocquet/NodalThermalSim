@@ -6,10 +6,8 @@ from anytree import Node, RenderTree
 from Solver import HALF_STENCIL
 from Physics import FiniteDifferenceTransport, FiniteVolume
 
-GHOST_INDEX = {'in': 0, 'ext': -1}
-FIRST_PHYS_VAL_INDEX = {'in': 1, 'ext': -2}
-GHOST_INDEX_ROOM = {'left': 0, 'right': -1}
-FIRST_PHYS_VAL_INDEX_ROOM = {'left': 1, 'right': -2}
+GHOST_INDEX = {'left': 0, 'right': -1}
+FIRST_PHYS_VAL_INDEX = {'left': 1, 'right': -2}
 
 
 class Source():
@@ -40,7 +38,7 @@ class NodeBase:
         self.neighbours = None
         self.neighbour_faces = None
 
-    def set_neighbours(self, neighbours, faces={'in': 'ext', 'ext': 'in'}, parent_node=None):
+    def set_neighbours(self, neighbours, faces={'left': 'right', 'right': 'left'}, parent_node=None):
         self.neighbours = neighbours
         self.neighbour_faces = faces
         assert self.neighbours.keys() == self.neighbour_faces.keys()
@@ -110,7 +108,7 @@ class Component(Node1D):
     number of ghost node on each side is HALF_STENCIL.
     There are (resolution) physical nodes, plus (2 * HALF_STENCIL) ghost nodes.
     There are (resolution-1) cells in the physical range.
-    Normal orientation is: in--->ext
+    Normal orientation is: left--->right
     """
 
     def __init__(
@@ -120,7 +118,7 @@ class Component(Node1D):
         thickness,
         y0,
         physics,
-        boundary_type={'in': 'dirichlet', 'ext': 'dirichlet'},
+        boundary_type={'left': 'dirichlet', 'right': 'dirichlet'},
         resolution=10,
         dx=-1,
         surface=1.0,
@@ -236,9 +234,6 @@ class Room(Component):
             source,
             observer,
         )
-
-        self.ghost_index = GHOST_INDEX_ROOM
-        self.first_phys_val_index = FIRST_PHYS_VAL_INDEX_ROOM
 
 
 

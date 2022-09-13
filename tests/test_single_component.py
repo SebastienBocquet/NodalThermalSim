@@ -11,8 +11,8 @@ from Physics import FiniteDifferenceTransport, FiniteVolume
 T0 = 273.15 + 25.
 EXTERIOR_TEMPERATURE = 273.15 + 33.
 INTERIOR_TEMPERATURE = T0
-air_exterior = ConstantComponent(EXTERIOR_TEMPERATURE)
-air_interior = ConstantComponent(INTERIOR_TEMPERATURE)
+air_exterior = ConstantComponent('air_exterior', EXTERIOR_TEMPERATURE)
+air_interior = ConstantComponent('air_interior', INTERIOR_TEMPERATURE)
 CP_BRICK = 840.0
 K_BRICK = 0.9
 DENSITY_BRICK = 2000.0
@@ -29,10 +29,10 @@ TIME_END = 48 * 3600.
 NB_FRAMES = 5
 OBSERVER_PERIOD = (int)(TIME_END / NB_FRAMES)
 
-output_temperature = Output(int(RESOLUTION / 2), var_name='temperature')
+output_temperature = Output('temperature', int(RESOLUTION / 2))
 
-neighbours = {'in': air_interior, 'ext': air_exterior}
-neighbour_faces = {'in': 'ext', 'ext': 'in'}
+neighbours = {'left': air_interior, 'right': air_exterior}
+neighbour_faces = {'left': 'right', 'right': 'left'}
 INIT_WALL_TEMPERATURE = T0
 
 observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, [output_temperature])
@@ -43,13 +43,13 @@ linear_profile = np.linspace(INTERIOR_TEMPERATURE, EXTERIOR_TEMPERATURE, RESOLUT
 # The temperature is imposed at the ghost nodes. So we add 2 dx to the thickness, to obtain the distance between the ghost nodes.
 expected_gradient = (EXTERIOR_TEMPERATURE - INTERIOR_TEMPERATURE) / (THICKNESS + 2 * DX)
 
-wall_adiabatic = Component('wall_adiabatic', brick, THICKNESS, INIT_WALL_TEMPERATURE, FiniteDifferenceTransport(), boundary_type={'in': 'adiabatic', 'ext': 'dirichlet'}, resolution=RESOLUTION, surface=1., observer=observer)
+wall_adiabatic = Component('wall_adiabatic', brick, THICKNESS, INIT_WALL_TEMPERATURE, FiniteDifferenceTransport(), boundary_type={'left': 'adiabatic', 'right': 'dirichlet'}, resolution=RESOLUTION, surface=1., observer=observer)
 wall_adiabatic.set_neighbours(neighbours, neighbour_faces)
 
 
 def test_constant_component_bc():
-    assert air_exterior.get_boundary_value('in') == approx(EXTERIOR_TEMPERATURE)
-    assert air_exterior.get_boundary_value('ext') == approx(EXTERIOR_TEMPERATURE)
+    assert air_exterior.get_boundary_value('left') == approx(EXTERIOR_TEMPERATURE)
+    assert air_exterior.get_boundary_value('right') == approx(EXTERIOR_TEMPERATURE)
 
 def test_component_bc_value():
     assert wall.y[1:RESOLUTION+1] == approx(INIT_WALL_TEMPERATURE)
@@ -66,12 +66,12 @@ def test_solver_single_component():
     # test solution against linear profile between exterior and interior temperature. Ghost nodes are included.
     expected_y = np.linspace(INTERIOR_TEMPERATURE, EXTERIOR_TEMPERATURE, RESOLUTION+2)
     assert wall.y == approx(expected_y)
-    assert wall.get_boundary_gradient('in') == approx(-expected_gradient)
-    assert wall.get_boundary_gradient('ext') == approx(expected_gradient)
+    assert wall.get_boundary_gradient('left') == approx(-expected_gradient)
+    assert wall.get_boundary_gradient('right') == approx(expected_gradient)
 
 def test_adiabatic_component():
     wall_adiabatic.update(0.)
     assert wall_adiabatic.y[0] == wall_adiabatic.y[1]
-    assert wall_adiabatic.get_boundary_gradient('in') == 0.
+    assert wall_adiabatic.get_boundary_gradient('left') == 0.
 
 

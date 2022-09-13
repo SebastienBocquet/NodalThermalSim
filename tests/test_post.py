@@ -4,13 +4,14 @@ import numpy as np
 from pytest import approx
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 from Component import ConstantComponent, Material, Component
-from Solver import Solver, Observer, FiniteDifferenceTransport, FiniteVolume, Output
+from Solver import Solver, Observer, Output
+from Physics import FiniteDifferenceTransport
 
 T0 = 273.15 + 25.
 EXTERIOR_TEMPERATURE = 273.15 + 33.
 INTERIOR_TEMPERATURE = T0
-air_exterior = ConstantComponent(EXTERIOR_TEMPERATURE)
-air_interior = ConstantComponent(INTERIOR_TEMPERATURE)
+air_exterior = ConstantComponent('air_exterior', EXTERIOR_TEMPERATURE)
+air_interior = ConstantComponent('air_interior', INTERIOR_TEMPERATURE)
 CP_AIR = 1000.
 DENSITY_AIR = 1.2
 K_AIR = 0.025 * 100
@@ -31,13 +32,13 @@ OBSERVER_PERIOD = (int)(TIME_END / NB_FRAMES)
 
 INIT_AIR_TEMPERATURE = np.ones((RESOLUTION)) * T0
 
-neighbours = {'in': air_interior, 'ext': air_exterior}
+neighbours = {'left': air_interior, 'right': air_exterior}
 
-output_temperature = Output(int(RESOLUTION / 2), var_name='temperature')
+output_temperature = Output('temperature', int(RESOLUTION / 2))
 # Does not work (plot is the same as raw temperature)
-output_temperature_space_avg = Output(0, var_name='temperature', spatial_type='mean')
-output_gradient_ext = Output(0, var_name='temperature_gradient', loc='ext')
-output_gradient_in = Output(0, var_name='temperature_gradient', loc='in')
+output_temperature_space_avg = Output(var_name='temperature', spatial_type='mean')
+output_gradient_ext = Output('temperature_gradient', loc='left')
+output_gradient_in = Output('temperature_gradient', loc='right')
 
 def test_observer():
     observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, [output_temperature])
