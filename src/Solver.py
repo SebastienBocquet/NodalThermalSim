@@ -46,7 +46,7 @@ class Output():
             #TODO: handle case of size 1 with loc=all
         else:
             self.size = 1
-            self.x = np.array(x[c.first_phys_val_index[self.loc]])
+            self.x = np.array(x[c.boundary_val_index[self.loc]])
         self.result.resize((self.size, nb_frames))
 
     def compute_var(self, c):
@@ -62,7 +62,7 @@ class Output():
                 return np.array([c.get_boundary_gradient(self.loc)])
         elif self.var_name == 'heat_flux':
             if self.loc == 'all':
-                return c.material.thermal_conductivty * np.diff(c.get_physics_y())
+                return c.material.thermal_conductivty * np.diff(c.get_physics_y() / c.dx)
             else:
                 return np.array([c.material.thermal_conductivty * c.get_boundary_gradient(self.loc)])
         elif self.var_name == 'HTC':
