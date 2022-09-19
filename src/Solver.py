@@ -1,3 +1,4 @@
+from anytree import Node, RenderTree
 import matplotlib.pyplot as plt
 import numpy as np
 import pathlib
@@ -211,6 +212,7 @@ class Solver:
         self.dt = dt
         self.time_start = time_start
         self.time_end = time_end
+        self.node = Node('')
         for c in self.components:
             c.check()
             if c.observer is not None:
@@ -220,14 +222,22 @@ class Solver:
             print('diffusivity', c.material.diffusivity)
             if (self.dt / c.dx ** 2) >= 1.0 / (2 * c.material.diffusivity):
                 raise ValueError
+            c.add_to_tree(self.node)
+
+    def show_tree(self):
+        print("\n")
+        for pre, fill, node_ in RenderTree(self.node):
+            print("%s%s" % (pre, node_.name))
 
     def run(self):
         nb_ite = int((self.time_end - self.time_start) / self.dt)
         print("nb_ite", nb_ite)
         for ite in range(1, nb_ite):
+            # if ite == 2000:
+            #     1/0
             time = self.time_start + ite * self.dt
             for c in self.components:
-                c.update(time)
+                c.update(time, ite)
             for c in self.components:
                 c.physics.advance_time(self.dt, c, ite)
             if ite % 10000 == 0:
