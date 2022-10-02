@@ -4,9 +4,31 @@ import numpy as np
 import pathlib
 import pandas as pd
 
-# 0 means the output size is the component resolution.
-# otherwise the size is 1
+
+HALF_STENCIL = 1
+T0 = 273.15
+OUTPUT_FIG = pathlib.Path('Results')
+INTERMEDIATE_STATUS_PERIOD = 10000
+
+
 def OUTPUT_SIZE(var_name, resolution):
+    """
+    Returns the size of the output.
+
+    The user must define here the output size for every variable defined
+    in class OutputComputer.
+
+    Parameters:
+    var_name (str): name of the output variable.
+    resolution (int): resolution (length of the discretized axis)
+    of the component from which the variable is post-processed.
+
+    Returns:
+    int: the size of the variable, ie the length of the axis
+    on which the variable values are stored.
+
+    """
+
     if var_name == 'temperature':
         return resolution
     elif var_name == 'temperature_gradient':
@@ -16,18 +38,21 @@ def OUTPUT_SIZE(var_name, resolution):
     elif var_name == 'HTC':
         return 1
 
-HALF_STENCIL = 1
-T0 = 273.15
-OUTPUT_FIG = pathlib.Path('Results')
-
-
 def get_time(ite, time_start, dt):
+    """Returns the time (s) based on time step and iteration."""
+
     return time_start + ite * dt
 
 
 class Output():
 
-    """Defines an output. """
+    """
+    Defines an output.
+
+    Attributes:
+        var_name (str): the name of the variable represented by this class.
+
+    """
 
     def __init__(self, var_name, index_temporal=-1, spatial_type='raw', temporal_type='instantaneous', loc='all'):
 
@@ -93,7 +118,6 @@ class OutputComputer():
             return np.array([htc])
 
 
-# TODO: split in a Output class which implements compute_var, and a PostProcess class, which handles the other functions (which are generic).
 class Post():
 
     """Transform the Output according to the type of spatial and temporal post-processing. """
@@ -135,7 +159,6 @@ class Observer:
     def __init__(self, time_start, time_period, time_end, outputs):
         """TODO: to be defined. """
 
-        # TODO set attributes from component
         assert time_period > 0
         assert time_end > time_start + time_period
         self.time_start = time_start
@@ -148,17 +171,14 @@ class Observer:
         self.ite_period = 0
         self.nb_frames = (int)((time_end - time_start) / time_period)
         self.ite_extraction = np.empty((self.nb_frames))
-        print("nb frames", self.nb_frames)
+        print("Number of data extractions:", self.nb_frames)
         # data = []
         # for i in range(self.nb_frames):
         #     data.append(np.zeros((nb_data_per_time)))
         # self.ts = pd.Series(data, range(self.nb_frames))
         self.update_count = 0
-        print("time period", self.time_period)
         self.temporal_axis = []
         self.temporal = np.zeros((self.nb_frames, len(self.outputs)))
-
-    # add a set_output func.
 
     def set_output_container(self, c):
         for o in self.outputs:
@@ -167,17 +187,17 @@ class Observer:
     def set_frame_ite(self, dt):
         assert self.time_period >= dt
         self.dt = dt
-        print("nb ite period", (int)(self.time_period / self.dt))
         self.ite_start = (int)(self.time_start / dt)
         self.ite_period = (int)(self.time_period / dt)
         for i in range(self.nb_frames):
             self.ite_extraction[i] = (int)(self.ite_start + i * self.ite_period)
         if self.ite_extraction[0] == 0:
             self.ite_extraction[0] = 1
-        print('data extract at ite', self.ite_extraction)
+        print("Extraction period (in ite):", (int)(self.time_period / self.dt))
+        print('Data are extracted at iterations:', self.ite_extraction)
 
     def update(self, c, ite):
-        print("observer is updated")
+        print("Observer is updated")
         self.temporal_axis.append(get_time(ite, self.time_start, self.dt))
         for io, output in enumerate(self.outputs):
             self.temporal[self.update_count, io] = self.post.compute_temporal(c, output)
@@ -221,7 +241,6 @@ class Observer:
             # plt.show()
 
 
-# TODO equation becomes an attribute of the component
 class Solver:
 
     """Docstring for Solver. """
@@ -234,15 +253,12 @@ class Solver:
         self.time_start = time_start
         self.time_end = time_end
         self.node = Node('')
+        print('Solver dt:', self.dt)
         for c in self.components:
             c.check()
             if c.observer is not None:
+                c.check_stability(dt)
                 c.observer.set_frame_ite(self.dt)
-            print('dt', self.dt)
-            print('dx', c.dx)
-            print('diffusivity', c.material.diffusivity)
-            if (self.dt / c.dx ** 2) >= 1.0 / (2 * c.material.diffusivity):
-                raise ValueError
             c.add_to_tree(self.node)
 
     def show_tree(self):
@@ -250,23 +266,31 @@ class Solver:
         for pre, fill, node_ in RenderTree(self.node):
             print("%s%s" % (pre, node_.name))
 
+    def show_status(self, ite, time):
+        print("ite", ite)
+        print("time", time)
+        for c in self.components:
+            if c.resolution < 100:
+                message = 'all values'
+                phys_values = c.get_physics_y()
+            else:
+                message = 'first 100 values'
+                phys_values = c.get_physics_y()[:100]
+            print('Component name:', c.name)
+            print(f'Component physical values ({message}):', phys_values)
+            print("")
+
     def run(self):
         nb_ite = int((self.time_end - self.time_start) / self.dt)
         print("nb_ite", nb_ite)
         for ite in range(1, nb_ite):
-            # if ite == 2000:
-            #     1/0
-            time = self.time_start + ite * self.dt
+            time = get_time(ite, self.time_start, self.dt)
             for c in self.components:
                 c.update(time, ite)
             for c in self.components:
                 c.physics.advance_time(self.dt, c, ite)
-            if ite % 10000 == 0:
-                print("ite", ite)
-                print("time", time)
-                for c in self.components:
-                    print(c.get_physics_y())
-                    print("")
+            if ite % INTERMEDIATE_STATUS_PERIOD == 0:
+                self.show_status(ite, time)
             for c in self.components:
                 if c.observer is not None:
                     if c.observer.is_updated(ite):

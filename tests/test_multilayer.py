@@ -71,7 +71,8 @@ wall_left.set_neighbours({'left': None, 'right': air}, {'left': 'right', 'right'
 wall_right.set_neighbours({'left': air, 'right': None}, {'left': 'right', 'right': 'left'})
 air.set_neighbours({'left': wall_left, 'right': wall_right})
 
-
+# TODO: use only two components. Check conservation of heat flux.
+# check that the 'electric resistance' is respected.
 def test_wall_air_wall():
     component_to_solve_list = [wall_left, air, wall_right]
     solver = Solver(component_to_solve_list, DT, TIME_END)

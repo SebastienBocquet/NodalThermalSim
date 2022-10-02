@@ -164,6 +164,13 @@ class Component(Node1D):
         if self.observer is not None:
             observer.set_output_container(self)
         self.flux = flux
+        print('Component name:', self.name)
+        print('Component discretization step (m):', self.dx)
+        print('Component diffusivity:', self.material.diffusivity)
+
+    def check_stability(self, dt):
+        if (dt / self.dx ** 2) >= 1.0 / (2 * self.material.diffusivity):
+            raise ValueError
 
     def add_to_tree(self, node):
         node_ = Node(self.name, parent=node)
@@ -206,7 +213,8 @@ class Component(Node1D):
         self.source.update(time)
         for face, neigh in self.neighbours.items():
             if self.boundary_type[face] == 'dirichlet':
-                # fill ghost node with the neighbour first physical node value.
+                # fill ghost node with the neighbour first physical node value, corrected to impose
+                # a gradient that ensures heat flux conservation through component interface.
                 ghost_val = neigh.get_boundary_value(self.neighbour_faces[face])
                 if neigh.material is not None:
                     gradient_neighbour = (neigh.get_boundary_value(self.neighbour_faces[face]) -
@@ -217,11 +225,11 @@ class Component(Node1D):
                     ghost_target = self.get_boundary_value(face) - self.dx * gradient
                     error = ghost_val - ghost_target
                     ghost_val += 1. * (ghost_val - ghost_target)
-                    real_flux = -self.material.thermal_conductivty * (ghost_val - self.get_boundary_value(face)) / self.dx
-                    if ite % 10000 == 0:
-                        print('error on ghost temperature', error)
-                        print('flux', real_flux)
-                        print('flux neighbour', flux_neighbour)
+                    # real_flux = -self.material.thermal_conductivty * (ghost_val - self.get_boundary_value(face)) / self.dx
+                    # if ite % 10000 == 0:
+                    #     print('error on ghost temperature', error)
+                    #     print('flux', real_flux)
+                    #     print('flux neighbour', flux_neighbour)
                 self.setGhostValue(face, ghost_val)
             elif self.boundary_type[face] == 'adiabatic':
                 # fill ghost node with first physical node value.
