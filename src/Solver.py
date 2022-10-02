@@ -20,88 +20,111 @@ HALF_STENCIL = 1
 T0 = 273.15
 OUTPUT_FIG = pathlib.Path('Results')
 
-# TODO: split in a Output class which implements compute_var, and a PostProcess class, which handles the other functions (which are generic).
+
+def get_time(ite, time_start, dt):
+    return time_start + ite * dt
+
+
 class Output():
 
-    """Docstring for Output. """
+    """Defines an output. """
 
     def __init__(self, var_name, index_temporal=-1, spatial_type='raw', temporal_type='instantaneous', loc='all'):
-        """TODO: to be defined. """
 
         self.var_name = var_name
-        self.spatial_type = spatial_type
-        self.temporal_type = temporal_type
         self.loc = loc
         self.index_temporal = index_temporal
-        self.temporal_mean = 0.
+        self.spatial_type = spatial_type
+        self.temporal_type = temporal_type
+        self.x = np.empty((1))
         self.result = np.empty((1,1))
-        pathlib.Path(OUTPUT_FIG).mkdir(parents=True, exist_ok=True)
 
-    def set_size(self, c, nb_frames):
+
+class OutputComputer():
+
+    """Handle the size of the output data,
+    and according to the location,
+    computes the output based on Component raw data. """
+
+    def __init__(self):
+        pass
+
+    def set_size(self, c, nb_frames, output):
         x = np.linspace(0, c.resolution * c.dx, num=c.resolution)
-        if self.loc == 'all':
-            self.size = OUTPUT_SIZE(self.var_name, c.resolution)
-            self.x = x[:self.size]
-            if self.index_temporal == -1:
-                self.index_temporal = 1 #TODO debug. (int)(self.size/2)
+        if output.loc == 'all':
+            output.size = OUTPUT_SIZE(output.var_name, c.resolution)
+            output.x = x[:output.size]
+            if output.index_temporal == -1:
+                output.index_temporal = 1 #TODO debug. (int)(self.size/2)
             #TODO: handle case of size 1 with loc=all
         else:
-            self.size = 1
-            self.x = np.array(x[c.boundary_val_index[self.loc]])
-        self.result.resize((self.size, nb_frames))
+            output.size = 1
+            output.x = np.array(x[c.boundary_val_index[output.loc]])
+        output.result.resize((output.size, nb_frames))
 
-    def compute_var(self, c):
-        if self.var_name == 'temperature':
-            if self.loc == 'all':
+    def compute_var(self, c, output):
+        if output.var_name == 'temperature':
+            if output.loc == 'all':
                 return c.get_physics_y()
             else:
-                return np.array([c.get_boundary_value(self.loc)])
-        elif self.var_name == 'temperature_gradient':
-            if self.loc == 'all':
+                return np.array([c.get_boundary_value(output.loc)])
+        elif output.var_name == 'temperature_gradient':
+            if output.loc == 'all':
                 return np.diff(c.get_physics_y())
             else:
-                return np.array([c.get_boundary_gradient(self.loc)])
-        elif self.var_name == 'heat_flux':
-            if self.loc == 'all':
+                return np.array([c.get_boundary_gradient(output.loc)])
+        elif output.var_name == 'heat_flux':
+            if output.loc == 'all':
                 return c.material.thermal_conductivty * np.diff(c.get_physics_y() / c.dx)
             else:
-                return np.array([c.material.thermal_conductivty * c.get_boundary_gradient(self.loc)])
-        elif self.var_name == 'HTC':
+                return np.array([c.material.thermal_conductivty * c.get_boundary_gradient(output.loc)])
+        elif output.var_name == 'HTC':
             surface_temperature = 0.
             ref_temperature = 0.
-            if self.loc == 'in':
-                # TODO introduce a get_ghost_value()[self.loc]
+            if output.loc == 'in':
+                # TODO introduce a get_ghost_value()[output.loc]
                 surface_temperature = 0.5 * (c.y[0] + c.get_physics_y()[0])
                 ref_temperature = c.get_physics_y()[0]
             else:
-                # TODO introduce a get_ghost_value()[self.loc]
+                # TODO introduce a get_ghost_value()[output.loc]
                 surface_temperature = 0.5 * (c.get_physics_y()[-1] + c.y[c.resolution + 1])
                 ref_temperature = c.get_physics_y()[-1]
-            htc = c.material.thermal_conductivty * c.get_boundary_gradient(self.loc) / (surface_temperature - ref_temperature)
+            htc = c.material.thermal_conductivty * c.get_boundary_gradient(output.loc) / (surface_temperature - ref_temperature)
             return np.array([htc])
 
 
-    def compute_instantaneous(self, c):
-        if self.spatial_type == 'raw':
-            if len(self.compute_var(c)) == 1:
-                return self.compute_var(c)[0]
+# TODO: split in a Output class which implements compute_var, and a PostProcess class, which handles the other functions (which are generic).
+class Post():
+
+    """Transform the Output according to the type of spatial and temporal post-processing. """
+
+    def __init__(self):
+        self.temporal_mean = 0.
+        self.output_computer = OutputComputer()
+
+    def compute_instantaneous(self, c, output):
+        if output.spatial_type == 'raw':
+            output_data = self.output_computer.compute_var(c, output)
+            if len(output_data) == 1:
+                return output_data[0]
             else:
-                return self.compute_var(c)[self.index_temporal]
-        elif self.spatial_type == 'mean':
-            return np.array([np.mean(self.compute_var(c))])
+                return output_data[output.index_temporal]
+        elif output.spatial_type == 'mean':
+            output_data = self.output_computer.compute_var(c, output)
+            return np.array([np.mean(output_data)])
         else:
             raise ValueError
 
-    def compute_temporal(self, c):
-        if self.temporal_type == 'mean':
+    def compute_temporal(self, c, output):
+        if output.temporal_type == 'mean':
             raise NotImplemented
-        elif self.temporal_type == 'instantaneous':
-            return self.compute_instantaneous(c)
+        elif output.temporal_type == 'instantaneous':
+            return self.compute_instantaneous(c, output)
         else:
             raise ValueError
 
-    def compute_spatial(self, c):
-        return self.compute_var(c)
+    def compute_spatial(self, c, output):
+        return self.output_computer.compute_var(c, output)
 
 
 class Observer:
@@ -119,6 +142,7 @@ class Observer:
         self.time_end = time_end
         self.time_period = time_period
         self.outputs = outputs
+        self.post = Post()
         self.dt = 0.
         self.ite_start = 0
         self.ite_period = 0
@@ -138,7 +162,7 @@ class Observer:
 
     def set_output_container(self, c):
         for o in self.outputs:
-            o.set_size(c, self.nb_frames)
+            self.post.output_computer.set_size(c, self.nb_frames, o)
 
     def set_frame_ite(self, dt):
         assert self.time_period >= dt
@@ -152,15 +176,12 @@ class Observer:
             self.ite_extraction[0] = 1
         print('data extract at ite', self.ite_extraction)
 
-    def __get_time(self, ite):
-        return self.time_start + ite * self.dt
-
     def update(self, c, ite):
         print("observer is updated")
-        self.temporal_axis.append(self.__get_time(ite))
+        self.temporal_axis.append(get_time(ite, self.time_start, self.dt))
         for io, output in enumerate(self.outputs):
-            self.temporal[self.update_count, io] = output.compute_temporal(c)
-            output.result[:, self.update_count] = output.compute_spatial(c)
+            self.temporal[self.update_count, io] = self.post.compute_temporal(c, output)
+            output.result[:, self.update_count] = self.post.compute_spatial(c, output)
         assert self.update_count < self.nb_frames
         self.update_count += 1
 
@@ -172,7 +193,7 @@ class Observer:
             if output.size > 1:
                 fig, ax = plt.subplots()
                 for i in range(self.nb_frames):
-                    time = self.__get_time(self.ite_extraction[i])
+                    time = get_time(self.ite_extraction[i], self.time_start, self.dt)
                     ax.plot(output.x, output.result[:, i], '-o', label="t=%ds" % time, linewidth=2.0)
                 ax.legend()
                 plt.title(f"Component {c.name}\n raw value of {output.var_name}")
