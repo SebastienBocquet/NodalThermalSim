@@ -179,6 +179,7 @@ class Observer:
         self.update_count = 0
         self.temporal_axis = []
         self.temporal = np.zeros((self.nb_frames, len(self.outputs)))
+        OUTPUT_FIG.mkdir(parents=True, exist_ok=True)
 
     def set_output_container(self, c):
         for o in self.outputs:
