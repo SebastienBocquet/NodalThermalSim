@@ -76,16 +76,21 @@ class OutputComputer():
 
     def set_size(self, c, nb_frames, output):
         x = np.linspace(0, c.resolution * c.dx, num=c.resolution)
-        if output.loc == 'all':
-            output.size = OUTPUT_SIZE(output.var_name, c.resolution)
-            output.x = x[:output.size]
-            if output.index_temporal == -1:
-                output.index_temporal = 1 #TODO debug. (int)(self.size/2)
-            #TODO: handle case of size 1 with loc=all
-        else:
+        if output.spatial_type == 'raw':
+            if output.loc == 'all':
+                output.size = OUTPUT_SIZE(output.var_name, c.resolution)
+                output.x = x[:output.size]
+                if output.index_temporal == -1:
+                    output.index_temporal = (int)(output.size/2)
+            else:
+                output.size = 1
+                output.x = np.array(x[c.boundary_val_index[output.loc]])
+        elif output.spatial_type == 'mean':
             output.size = 1
-            output.x = np.array(x[c.boundary_val_index[output.loc]])
-        output.result.resize((output.size, nb_frames))
+            output.x = np.array(x[(int)(c.resolution/2)])
+        else:
+            raise ValueError
+        output.result = np.resize(output.result, (output.size, nb_frames))
 
     def compute_var(self, c, output):
         if output.var_name == 'temperature':
@@ -148,8 +153,13 @@ class Post():
             raise ValueError
 
     def compute_spatial(self, c, output):
-        return self.output_computer.compute_var(c, output)
-
+        if output.spatial_type == 'raw':
+            return self.output_computer.compute_var(c, output)
+        elif output.spatial_type == 'mean':
+            output_data = self.output_computer.compute_var(c, output)
+            return np.array([np.mean(output_data)])
+        else:
+            raise ValueError
 
 class Observer:
 
@@ -160,7 +170,7 @@ class Observer:
         """TODO: to be defined. """
 
         assert time_period > 0
-        assert time_end > time_start + time_period
+        assert time_end >= time_start + time_period
         self.time_start = time_start
         self.time_end = time_end
         self.time_period = time_period
@@ -192,8 +202,6 @@ class Observer:
         self.ite_period = (int)(self.time_period / dt)
         for i in range(self.nb_frames):
             self.ite_extraction[i] = (int)(self.ite_start + i * self.ite_period)
-        if self.ite_extraction[0] == 0:
-            self.ite_extraction[0] = 1
         print("Extraction period (in ite):", (int)(self.time_period / self.dt))
         print('Data are extracted at iterations:', self.ite_extraction)
 
@@ -219,6 +227,7 @@ class Observer:
                 ax.legend()
                 plt.title(f"Component {c.name}\n raw value of {output.var_name}")
                 plt.savefig(OUTPUT_FIG / f"Component_{c.name}_raw_{output.var_name}.png")
+                plt.close()
                 # plt.show()
 
     def plot_temporal(self, c):
@@ -239,6 +248,7 @@ class Observer:
                 loc = ''
             plt.title(f"Component {c.name}\n {output.temporal_type} value of\n {output.spatial_type} spatial {output.var_name} {loc_prefix}{loc}")
             plt.savefig(OUTPUT_FIG / f"Component_{c.name}_{output.temporal_type}_of_{output.spatial_type}_spatial_{output.var_name}_{loc_prefix}{loc}.png")
+            plt.close()
             # plt.show()
 
 
@@ -284,18 +294,18 @@ class Solver:
     def run(self):
         nb_ite = int((self.time_end - self.time_start) / self.dt)
         print("nb_ite", nb_ite)
-        for ite in range(1, nb_ite):
+        for ite in range(0, nb_ite):
             time = get_time(ite, self.time_start, self.dt)
-            for c in self.components:
-                c.update(time, ite)
-            for c in self.components:
-                c.physics.advance_time(self.dt, c, ite)
-            if ite % INTERMEDIATE_STATUS_PERIOD == 0:
-                self.show_status(ite, time)
             for c in self.components:
                 if c.observer is not None:
                     if c.observer.is_updated(ite):
                         c.observer.update(c, ite)
+            if ite % INTERMEDIATE_STATUS_PERIOD == 0:
+                self.show_status(ite, time)
+            for c in self.components:
+                c.update(time, ite)
+            for c in self.components:
+                c.physics.advance_time(self.dt, c, ite)
 
     def post(self,):
         for c in self.components:

@@ -30,7 +30,7 @@ TIME_END = 1 * 3600.
 NB_FRAMES = 5
 OBSERVER_PERIOD = (int)(TIME_END / NB_FRAMES)
 
-INIT_AIR_TEMPERATURE = np.ones((RESOLUTION)) * T0
+INIT_AIR_TEMPERATURE = T0 * np.linspace(0, RESOLUTION, num=RESOLUTION)
 
 neighbours = {'left': air_interior, 'right': air_exterior}
 
@@ -47,13 +47,13 @@ def test_observer():
 
     # TODO check extreme setup. Especially the case of a single frame (typically the last one).
     room.observer.set_frame_ite(DT)
-    observed_ite = [1]
-    for i in range(1,NB_FRAMES):
+    observed_ite = []
+    for i in range(NB_FRAMES):
         ite_observation = (int)(i * (int)(OBSERVER_PERIOD / DT))
         observed_ite.append(ite_observation)
     assert (observed_ite == observer.ite_extraction).all()
 
-    for i in range(1,NB_FRAMES):
+    for i in range(NB_FRAMES):
         ite_observation = (int)(i * (int)(OBSERVER_PERIOD / DT))
         observed_ite.append(ite_observation)
         print(ite_observation)
@@ -64,15 +64,56 @@ def test_observer():
     solver.run()
     assert observer.update_count == NB_FRAMES
 
+def test_observer_single_ite():
+    observer = Observer(TIME_START, DT, TIME_START + DT, [output_temperature])
+    # add a set_observer function to Component
+    room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), resolution=RESOLUTION, surface=BOX_DEPTH*BOX_HEIGHT, observer=observer)
+    room.set_neighbours(neighbours)
+
+    # TODO check extreme setup. Especially the case of a single frame (typically the last one).
+    room.observer.set_frame_ite(DT)
+    expected_observed_ite = 0
+    observed_ite = [expected_observed_ite]
+    print(observer.ite_extraction)
+    assert (observed_ite == observer.ite_extraction).all()
+    assert observer.is_updated(expected_observed_ite) is True
+
+    component_to_solve_list = [room]
+    solver = Solver(component_to_solve_list, DT, TIME_START + DT)
+    solver.run()
+    assert observer.update_count == 1
+
 def test_raw_output():
-    observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, [output_temperature, output_gradient_in, output_gradient_ext, output_temperature_space_avg])
-    # observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, [output_temperature_space_avg])
+    observer = Observer(TIME_START, DT, TIME_START + DT, [output_temperature])
     room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), resolution=RESOLUTION, surface=BOX_DEPTH*BOX_HEIGHT, observer=observer)
     room.set_neighbours(neighbours)
     component_to_solve_list = [room]
-    solver = Solver(component_to_solve_list, DT, TIME_END)
+    # run one iteration.
+    # TODO: supprimer duplication de code dans les tests (création d'objet)
+    # TODO démarrer ite loop at 0, pour pouvoir observer le champ initial
+    solver = Solver(component_to_solve_list, DT, TIME_START + DT)
     solver.run()
     solver.post()
     assert output_temperature.size == RESOLUTION
     assert (output_temperature.x == np.linspace(0, RESOLUTION * DX, num=RESOLUTION)).all()
+    assert (output_temperature.result[:,0] == INIT_AIR_TEMPERATURE).all()
+    assert len(observer.temporal_axis) == 1
+    assert observer.temporal_axis[:] == [TIME_START]
+    assert (observer.temporal[:,0] == [INIT_AIR_TEMPERATURE[(int)(0.5 * RESOLUTION)]]).all()
 
+def test_spatial_avg_output():
+    observer = Observer(TIME_START, DT, TIME_START + DT, [output_temperature_space_avg])
+    # observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, [output_temperature_space_avg])
+    room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), resolution=RESOLUTION, surface=BOX_DEPTH*BOX_HEIGHT, observer=observer)
+    room.set_neighbours(neighbours)
+    component_to_solve_list = [room]
+    # run one iteration
+    solver = Solver(component_to_solve_list, DT, TIME_START + DT)
+    solver.run()
+    solver.post()
+    x = np.linspace(0, RESOLUTION * DX, num=RESOLUTION)
+    assert output_temperature_space_avg.size == 1
+    assert (output_temperature_space_avg.x == [x[(int)(0.5 * RESOLUTION)]]).all()
+    assert (output_temperature_space_avg.result[:,0] == [np.mean(INIT_AIR_TEMPERATURE)]).all()
+    assert len(observer.temporal_axis) == 1
+    assert (observer.temporal[:,0] == [np.mean(INIT_AIR_TEMPERATURE)]).all()
