@@ -6,6 +6,9 @@ from anytree import Node, RenderTree
 from Solver import HALF_STENCIL
 from Physics import FiniteDifferenceTransport, FiniteVolume
 
+X = 0
+Y = 1
+Z = 2
 GHOST_INDEX = {'left': 0, 'right': -1}
 BOUNDARY_VAL_INDEX = {'left': 1, 'right': -2}
 FIRST_PHYS_VAL_INDEX = {'left': 2, 'right': -3}
@@ -125,13 +128,14 @@ class Component(Node1D):
         thickness,
         y0,
         physics,
+        outputs,
         boundary_type={'left': 'dirichlet', 'right': 'dirichlet'},
         resolution=10,
         dx=-1,
         surface=1.0,
         source=None,
+        # TODO put in a BoundaryCondition object
         flux={'left': None, 'right': None},
-        observer=None,
     ):
         """TODO: to be defined. """
 
@@ -160,13 +164,16 @@ class Component(Node1D):
         self.ghost_index = GHOST_INDEX
         self.boundary_val_index = BOUNDARY_VAL_INDEX
         self.first_phys_val_index = FIRST_PHYS_VAL_INDEX
-        self.observer = observer
-        if self.observer is not None:
-            observer.set_output_container(self)
         self.flux = flux
+        self.outputs = outputs
+        self.temporal_output = None
         print('Component name:', self.name)
         print('Component discretization step (m):', self.dx)
         print('Component diffusivity:', self.material.diffusivity)
+
+    def set_temporal_data_size(self, nb_frames):
+        self.temporal_output = np.zeros((nb_frames, len(self.outputs)))
+
 
     def check_stability(self, dt):
         if (dt / self.dx ** 2) >= 1.0 / (2 * self.material.diffusivity):
@@ -277,5 +284,27 @@ class Room(Component):
             observer,
         )
 
+def create_component(
+    type,
+    name,
+    material,
+    dimensions,
+    y0,
+    outputs,
+    boundary_type={'left': 'dirichlet', 'right': 'dirichlet'},
+    resolution=10,
+    dx=-1,
+    surface=1.0,
+    source=None,
+    flux={'left': None, 'right': None},
+):
+
+    if type == '1D':
+        physics_default = FiniteDifferenceTransport()
+        c = Component(name, material, dimensions[X], y0, physics_default(), resolution, surface=dimensions[Y] * dimensions[Z])
+        c.set_neighbours(neighbours)
+        return c
+    else:
+        raise ValueError()
 
 

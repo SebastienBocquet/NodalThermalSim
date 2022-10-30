@@ -1,3 +1,4 @@
+import copy
 from anytree import Node, RenderTree
 import matplotlib.pyplot as plt
 import numpy as np
@@ -166,7 +167,7 @@ class Observer:
     """Docstring for Observer. 
     """
 
-    def __init__(self, time_start, time_period, time_end, outputs):
+    def __init__(self, time_start, time_period, time_end, dt):
         """TODO: to be defined. """
 
         assert time_period > 0
@@ -174,43 +175,35 @@ class Observer:
         self.time_start = time_start
         self.time_end = time_end
         self.time_period = time_period
-        self.outputs = outputs
-        self.post = Post()
-        self.dt = 0.
-        self.ite_start = 0
-        self.ite_period = 0
+        self.dt = dt
         self.nb_frames = (int)((time_end - time_start) / time_period)
         self.ite_extraction = np.empty((self.nb_frames))
         print("Number of data extractions:", self.nb_frames)
-        # data = []
-        # for i in range(self.nb_frames):
-        #     data.append(np.zeros((nb_data_per_time)))
-        # self.ts = pd.Series(data, range(self.nb_frames))
-        self.update_count = 0
-        self.temporal_axis = []
-        self.temporal = np.zeros((self.nb_frames, len(self.outputs)))
-        OUTPUT_FIG.mkdir(parents=True, exist_ok=True)
-
-    def set_output_container(self, c):
-        for o in self.outputs:
-            self.post.output_computer.set_size(c, self.nb_frames, o)
-
-    def set_frame_ite(self, dt):
         assert self.time_period >= dt
-        self.dt = dt
         self.ite_start = (int)(self.time_start / dt)
         self.ite_period = (int)(self.time_period / dt)
         for i in range(self.nb_frames):
             self.ite_extraction[i] = (int)(self.ite_start + i * self.ite_period)
         print("Extraction period (in ite):", (int)(self.time_period / self.dt))
         print('Data are extracted at iterations:', self.ite_extraction)
+        # data = []
+        # for i in range(self.nb_frames):
+        #     data.append(np.zeros((nb_data_per_time)))
+        # self.ts = pd.Series(data, range(self.nb_frames))
+        self.update_count = 0
+        self.temporal_axis = []
+        OUTPUT_FIG.mkdir(parents=True, exist_ok=True)
 
-    def update(self, c, ite):
+    def set_output_container(self, post, c):
+        for o in c.outputs:
+            post.output_computer.set_size(c, self.nb_frames, o)
+
+    def update(self, c, ite, post):
         print("Observer is updated")
         self.temporal_axis.append(get_time(ite, self.time_start, self.dt))
-        for io, output in enumerate(self.outputs):
-            self.temporal[self.update_count, io] = self.post.compute_temporal(c, output)
-            output.result[:, self.update_count] = self.post.compute_spatial(c, output)
+        for io, output in enumerate(c.outputs):
+            c.temporal_output[self.update_count, io] = post.compute_temporal(c, output)
+            output.result[:, self.update_count] = post.compute_spatial(c, output)
         assert self.update_count < self.nb_frames
         self.update_count += 1
 
@@ -218,7 +211,7 @@ class Observer:
         return ite in self.ite_extraction
 
     def plot(self, c):
-        for io, output in enumerate(self.outputs):
+        for io, output in enumerate(c.outputs):
             if output.size > 1:
                 fig, ax = plt.subplots()
                 for i in range(self.nb_frames):
@@ -231,9 +224,9 @@ class Observer:
                 # plt.show()
 
     def plot_temporal(self, c):
-        for io, output in enumerate(self.outputs):
+        for io, output in enumerate(c.outputs):
             fig, ax = plt.subplots()
-            ax.plot(self.temporal_axis, np.array(self.temporal[:,io]), label=f"{output.var_name}", linewidth=2.0)
+            ax.plot(self.temporal_axis, np.array(c.temporal_output[:,io]), label=f"{output.var_name}", linewidth=2.0)
             ax.legend()
             loc = 0
             loc_prefix = ''
@@ -263,14 +256,20 @@ class Solver:
         self.dt = dt
         self.time_start = time_start
         self.time_end = time_end
+        self.post = Post()
+        self.observer = None
         self.node = Node('')
         print('Solver dt:', self.dt)
         for c in self.components:
             c.check()
-            if c.observer is not None:
-                c.check_stability(dt)
-                c.observer.set_frame_ite(self.dt)
+            c.check_stability(dt)
             c.add_to_tree(self.node)
+
+    def set_observer(self, observer_):
+        self.observer = observer_
+        for c in self.components:
+            c.set_temporal_data_size(self.observer.nb_frames)
+            self.observer.set_output_container(self.post, c)
 
     def show_tree(self):
         print("\n")
@@ -297,9 +296,9 @@ class Solver:
         for ite in range(0, nb_ite):
             time = get_time(ite, self.time_start, self.dt)
             for c in self.components:
-                if c.observer is not None:
-                    if c.observer.is_updated(ite):
-                        c.observer.update(c, ite)
+                if self.observer is not None:
+                    if self.observer.is_updated(ite):
+                        self.observer.update(c, ite, self.post)
             if ite % INTERMEDIATE_STATUS_PERIOD == 0:
                 self.show_status(ite, time)
             for c in self.components:
@@ -307,8 +306,8 @@ class Solver:
             for c in self.components:
                 c.physics.advance_time(self.dt, c, ite)
 
-    def post(self,):
+    def compute_post(self,):
         for c in self.components:
-            if c.observer is not None:
-                c.observer.plot(c)
-                c.observer.plot_temporal(c)
+            if self.observer is not None:
+                self.observer.plot(c)
+                self.observer.plot_temporal(c)
