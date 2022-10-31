@@ -46,21 +46,22 @@ class Post():
         self.temporal_mean = 0.
         self.output_computer = OutputComputer()
 
+
     def set_size(self, c, nb_frames, output):
-        # TODO define x in component. Start at ghost node.
-        x = np.linspace(0, c.resolution * c.dx, num=c.resolution)
         if output.spatial_type == 'raw':
             if output.loc == 'all':
                 output.size = OUTPUT_SIZE(output.var_name, c.resolution)
-                output.x = x[:output.size]
+                output.x = c.get_physics_x()[:output.size]
+                # default index for temporal value output ist the middle of the component.
                 if output.index_temporal == -1:
                     output.index_temporal = (int)(output.size/2)
             else:
                 output.size = 1
-                output.x = np.array(x[c.boundary_val_index[output.loc]])
+                output.x = np.array([c.x[c.boundary_val_index[output.loc]]])
         elif output.spatial_type == 'mean':
             output.size = 1
-            output.x = np.array(x[(int)(c.resolution/2)])
+            # mean value is located at the middle of the component.
+            output.x = np.array([c.get_physics_x()[(int)(c.resolution/2)]])
         else:
             raise ValueError
         output.result = np.resize(output.result, (output.size, nb_frames))
@@ -226,15 +227,13 @@ class Solver:
         print("nb_ite", nb_ite)
         for ite in range(0, nb_ite):
             time = get_time(ite, self.time_start, self.dt)
-            for c in self.components:
-                if self.observer is not None:
-                    if self.observer.is_updated(ite):
-                        self.observer.update(c, ite, self.post)
             if ite % INTERMEDIATE_STATUS_PERIOD == 0:
                 self.show_status(ite, time)
             for c in self.components:
                 c.update(time, ite)
-            for c in self.components:
+                if self.observer is not None:
+                    if self.observer.is_updated(ite):
+                        self.observer.update(c, ite, self.post)
                 c.physics.advance_time(self.dt, c, ite)
 
     def compute_post(self,):

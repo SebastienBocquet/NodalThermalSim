@@ -165,6 +165,10 @@ class Component(Node1D):
         self.boundary_val_index = BOUNDARY_VAL_INDEX
         self.first_phys_val_index = FIRST_PHYS_VAL_INDEX
         self.flux = flux
+        x0 = 0.
+        self.x = np.linspace(x0 - HALF_STENCIL * self.dx,
+                             (self.resolution - 1 + HALF_STENCIL) * self.dx,
+                             num=self.resolution + 2 * HALF_STENCIL)
         self.outputs = outputs
         self.temporal_output = None
         print('Component name:', self.name)
@@ -190,6 +194,11 @@ class Component(Node1D):
         assert self.boundary_type.keys() == self.ghost_index.keys()
         assert self.boundary_val_index.keys() == self.ghost_index.keys()
 
+
+    def get_physics_x(self):
+        return self.x[HALF_STENCIL:self.resolution+HALF_STENCIL]
+
+
     def get_physics_y(self):
         return self.y[HALF_STENCIL:self.resolution+HALF_STENCIL]
 
@@ -199,7 +208,7 @@ class Component(Node1D):
     def setBoundaryValue(self, face, val):
         self.y[self.boundary_val_index[face]] = val
 
-    # gradient is oriented twoards the exterior of the component.
+    # gradient is oriented towards the exterior of the component.
     def get_boundary_gradient(self, loc):
         return (self.y[self.ghost_index[loc]] - self.get_boundary_value(loc)) / self.dx
 

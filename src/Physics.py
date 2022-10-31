@@ -1,7 +1,17 @@
 import numpy as np
 
+
 HALF_STENCIL = 1
 T0 = 273.15
+
+
+class OutputComputerBase():
+
+    def __init__(self):
+        pass
+
+    def compute_var(self):
+        return NotImplementedError
 
 
 def OUTPUT_SIZE(var_name, resolution):
@@ -32,7 +42,7 @@ def OUTPUT_SIZE(var_name, resolution):
         return 1
 
 
-class OutputComputer():
+class OutputComputer(OutputComputerBase):
 
     """Handle the size of the output data,
     and according to the location,
@@ -50,7 +60,7 @@ class OutputComputer():
                 return np.array([c.get_boundary_value(output.loc)])
         elif output.var_name == 'temperature_gradient':
             if output.loc == 'all':
-                return np.diff(c.get_physics_y())
+                return np.diff(c.get_physics_y()) / c.dx
             else:
                 return np.array([c.get_boundary_gradient(output.loc)])
         elif output.var_name == 'heat_flux':

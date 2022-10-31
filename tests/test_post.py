@@ -30,14 +30,21 @@ TIME_END = 1 * 3600.
 NB_FRAMES = 5
 OBSERVER_PERIOD = (int)(TIME_END / NB_FRAMES)
 
-INIT_AIR_TEMPERATURE = T0 * np.linspace(0, RESOLUTION, num=RESOLUTION)
+X_PHYSICS = np.linspace(0, (RESOLUTION - 1) * DX, num=RESOLUTION)
+# constructed such as left gradient is T0 / dx
+INIT_AIR_TEMPERATURE = np.linspace(2 * T0, 2 * T0 + (RESOLUTION - 1) * T0, num=RESOLUTION)
 
 neighbours = {'left': air_interior, 'right': air_exterior}
 
-output_temperature = Output('temperature', int(RESOLUTION / 2))
+INDEX_TEMPORAL = 0
+INDEX_TEMPORAL_DEFAULT = (int)(0.5 * RESOLUTION)
+output_temperature = Output('temperature')
+output_gradient = Output('temperature_gradient')
+output_temperature_temporal_loc = Output('temperature', INDEX_TEMPORAL)
 output_temperature_space_avg = Output(var_name='temperature', spatial_type='mean')
-output_gradient_ext = Output('temperature_gradient', loc='left')
-output_gradient_in = Output('temperature_gradient', loc='right')
+output_gradient_left = Output('temperature_gradient', loc='left')
+output_gradient_right = Output('temperature_gradient', loc='right')
+
 
 def test_observer():
     observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, DT)
@@ -58,10 +65,10 @@ def test_observer():
         assert observer.is_updated(ite_observation) is True
 
     component_to_solve_list = [room]
-    solver = Solver(component_to_solve_list, DT, TIME_END)
-    solver.set_observer(observer)
+    solver = Solver(component_to_solve_list, DT, TIME_END, observer)
     solver.run()
     assert observer.update_count == NB_FRAMES
+
 
 def test_observer_ite0():
     observer = Observer(TIME_START, DT, TIME_START + DT, DT)
@@ -77,44 +84,86 @@ def test_observer_ite0():
     assert observer.is_updated(expected_observed_ite) is True
 
     component_to_solve_list = [room]
-    solver = Solver(component_to_solve_list, DT, TIME_START + DT)
-    solver.set_observer(observer)
+    solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
     solver.run()
     assert observer.update_count == 1
 
+
 def test_raw_output():
+    # output is computed at ite0
     observer = Observer(TIME_START, DT, TIME_START + DT, DT)
     room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature], resolution=RESOLUTION, surface=BOX_DEPTH*BOX_HEIGHT)
     room.set_neighbours(neighbours)
     component_to_solve_list = [room]
     # run one iteration.
-    solver = Solver(component_to_solve_list, DT, TIME_START + DT)
-    solver.set_observer(observer)
+    solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
     solver.run()
     solver.compute_post()
     assert output_temperature.size == RESOLUTION
-    assert (output_temperature.x == np.linspace(0, RESOLUTION * DX, num=RESOLUTION)).all()
+    assert output_temperature.x == approx(X_PHYSICS)
     assert (output_temperature.result[:,0] == INIT_AIR_TEMPERATURE).all()
     assert len(observer.temporal_axis) == 1
     assert observer.temporal_axis[:] == [TIME_START]
-    assert (room.temporal_output[:,0] == [INIT_AIR_TEMPERATURE[(int)(0.5 * RESOLUTION)]]).all()
+    assert (room.temporal_output[:,0] == [INIT_AIR_TEMPERATURE[INDEX_TEMPORAL_DEFAULT]]).all()
+
+
+def test_raw_output_temporal_loc():
+    # output is computed at ite0
+    observer = Observer(TIME_START, DT, TIME_START + DT, DT)
+    room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature_temporal_loc], resolution=RESOLUTION, surface=BOX_DEPTH*BOX_HEIGHT)
+    room.set_neighbours(neighbours)
+    component_to_solve_list = [room]
+    # run one iteration.
+    solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
+    solver.run()
+    solver.compute_post()
+    assert (room.temporal_output[:,0] == [INIT_AIR_TEMPERATURE[INDEX_TEMPORAL]]).all()
+
 
 def test_spatial_avg_output():
+    # output is computed at ite0
     observer = Observer(TIME_START, DT, TIME_START + DT, DT)
-    # observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, [output_temperature_space_avg])
     room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature_space_avg], resolution=RESOLUTION, surface=BOX_DEPTH*BOX_HEIGHT)
     room.set_neighbours(neighbours)
     component_to_solve_list = [room]
     # run one iteration
-    solver = Solver(component_to_solve_list, DT, TIME_START + DT)
-    solver.set_observer(observer)
+    solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
     solver.run()
     solver.compute_post()
-    x = np.linspace(0, RESOLUTION * DX, num=RESOLUTION)
     assert output_temperature_space_avg.size == 1
-    assert (output_temperature_space_avg.x == [x[(int)(0.5 * RESOLUTION)]]).all()
+    assert (output_temperature_space_avg.x == [X_PHYSICS[INDEX_TEMPORAL_DEFAULT]]).all()
     assert (output_temperature_space_avg.result[:,0] == [np.mean(INIT_AIR_TEMPERATURE)]).all()
     assert len(observer.temporal_axis) == 1
     assert (room.temporal_output[:,0] == [np.mean(INIT_AIR_TEMPERATURE)]).all()
 
-# TODO: test other outputs
+
+def test_gradient_output():
+    # output is computed at ite0
+    observer = Observer(TIME_START, DT, TIME_START + DT, DT)
+    room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_gradient], resolution=RESOLUTION, surface=BOX_DEPTH*BOX_HEIGHT)
+    room.set_neighbours(neighbours)
+    component_to_solve_list = [room]
+    # run one iteration.
+    solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
+    solver.run()
+    solver.compute_post()
+    assert output_gradient.result[:,0] == approx(np.diff(INIT_AIR_TEMPERATURE) / DX)
+    assert room.temporal_output[:,0] == approx([T0 / DX])
+
+
+def test_boundary_output():
+    # output is computed at ite0
+    observer = Observer(TIME_START, DT, TIME_START + DT, DT)
+    room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_gradient_left], resolution=RESOLUTION, surface=BOX_DEPTH*BOX_HEIGHT)
+    room.set_neighbours(neighbours)
+    component_to_solve_list = [room]
+    # run one iteration
+    solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
+    solver.run()
+    solver.compute_post()
+    expected_value = -np.diff(INIT_AIR_TEMPERATURE)[0] / DX
+    assert output_gradient_left.size == 1
+    assert output_gradient_left.x == approx([0.])
+    assert output_gradient_left.result[0,0] == approx(expected_value)
+    assert len(observer.temporal_axis) == 1
+    assert room.temporal_output[0,0] == approx(expected_value)
