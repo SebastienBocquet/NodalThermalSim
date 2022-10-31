@@ -1,5 +1,77 @@
 import numpy as np
-from Solver import HALF_STENCIL, T0
+
+HALF_STENCIL = 1
+T0 = 273.15
+
+
+def OUTPUT_SIZE(var_name, resolution):
+    """
+    Returns the size of the output.
+
+    The user must define here the output size for every variable defined
+    in class OutputComputer.
+
+    Parameters:
+    var_name (str): name of the output variable.
+    resolution (int): resolution (length of the discretized axis)
+    of the component from which the variable is post-processed.
+
+    Returns:
+    int: the size of the variable, ie the length of the axis
+    on which the variable values are stored.
+
+    """
+
+    if var_name == 'temperature':
+        return resolution
+    elif var_name == 'temperature_gradient':
+        return resolution - 1
+    elif var_name == 'heat_flux':
+        return resolution - 1
+    elif var_name == 'HTC':
+        return 1
+
+
+class OutputComputer():
+
+    """Handle the size of the output data,
+    and according to the location,
+    computes the output based on Component raw data. """
+
+    def __init__(self):
+        pass
+
+
+    def compute_var(self, c, output):
+        if output.var_name == 'temperature':
+            if output.loc == 'all':
+                return c.get_physics_y()
+            else:
+                return np.array([c.get_boundary_value(output.loc)])
+        elif output.var_name == 'temperature_gradient':
+            if output.loc == 'all':
+                return np.diff(c.get_physics_y())
+            else:
+                return np.array([c.get_boundary_gradient(output.loc)])
+        elif output.var_name == 'heat_flux':
+            if output.loc == 'all':
+                return c.material.thermal_conductivty * np.diff(c.get_physics_y() / c.dx)
+            else:
+                return np.array([c.material.thermal_conductivty * c.get_boundary_gradient(output.loc)])
+        elif output.var_name == 'HTC':
+            surface_temperature = 0.
+            ref_temperature = 0.
+            if output.loc == 'in':
+                # TODO introduce a get_ghost_value()[output.loc]
+                surface_temperature = 0.5 * (c.y[0] + c.get_physics_y()[0])
+                ref_temperature = c.get_physics_y()[0]
+            else:
+                # TODO introduce a get_ghost_value()[output.loc]
+                surface_temperature = 0.5 * (c.get_physics_y()[-1] + c.y[c.resolution + 1])
+                ref_temperature = c.get_physics_y()[-1]
+            htc = c.material.thermal_conductivty * c.get_boundary_gradient(output.loc) / (surface_temperature - ref_temperature)
+            return np.array([htc])
+
 
 class FiniteVolume:
 

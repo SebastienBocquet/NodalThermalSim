@@ -301,8 +301,7 @@ def create_component(
 
     if type == '1D':
         physics_default = FiniteDifferenceTransport()
-        c = Component(name, material, dimensions[X], y0, physics_default(), resolution, surface=dimensions[Y] * dimensions[Z])
-        c.set_neighbours(neighbours)
+        c = Component(name, material, dimensions[X], y0, physics_default(), outputs, resolution, surface=dimensions[Y] * dimensions[Z])
         return c
     else:
         raise ValueError()

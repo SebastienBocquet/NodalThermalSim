@@ -4,40 +4,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pathlib
 import pandas as pd
+from Physics import OUTPUT_SIZE, T0, HALF_STENCIL, OutputComputer
 
 
-HALF_STENCIL = 1
-T0 = 273.15
 OUTPUT_FIG = pathlib.Path('Results')
 INTERMEDIATE_STATUS_PERIOD = 10000
 
-
-def OUTPUT_SIZE(var_name, resolution):
-    """
-    Returns the size of the output.
-
-    The user must define here the output size for every variable defined
-    in class OutputComputer.
-
-    Parameters:
-    var_name (str): name of the output variable.
-    resolution (int): resolution (length of the discretized axis)
-    of the component from which the variable is post-processed.
-
-    Returns:
-    int: the size of the variable, ie the length of the axis
-    on which the variable values are stored.
-
-    """
-
-    if var_name == 'temperature':
-        return resolution
-    elif var_name == 'temperature_gradient':
-        return resolution - 1
-    elif var_name == 'heat_flux':
-        return resolution - 1
-    elif var_name == 'HTC':
-        return 1
 
 def get_time(ite, time_start, dt):
     """Returns the time (s) based on time step and iteration."""
@@ -66,16 +38,16 @@ class Output():
         self.result = np.empty((1,1))
 
 
-class OutputComputer():
+class Post():
 
-    """Handle the size of the output data,
-    and according to the location,
-    computes the output based on Component raw data. """
+    """Transform the Output according to the type of spatial and temporal post-processing. """
 
     def __init__(self):
-        pass
+        self.temporal_mean = 0.
+        self.output_computer = OutputComputer()
 
     def set_size(self, c, nb_frames, output):
+        # TODO define x in component. Start at ghost node.
         x = np.linspace(0, c.resolution * c.dx, num=c.resolution)
         if output.spatial_type == 'raw':
             if output.loc == 'all':
@@ -93,44 +65,6 @@ class OutputComputer():
             raise ValueError
         output.result = np.resize(output.result, (output.size, nb_frames))
 
-    def compute_var(self, c, output):
-        if output.var_name == 'temperature':
-            if output.loc == 'all':
-                return c.get_physics_y()
-            else:
-                return np.array([c.get_boundary_value(output.loc)])
-        elif output.var_name == 'temperature_gradient':
-            if output.loc == 'all':
-                return np.diff(c.get_physics_y())
-            else:
-                return np.array([c.get_boundary_gradient(output.loc)])
-        elif output.var_name == 'heat_flux':
-            if output.loc == 'all':
-                return c.material.thermal_conductivty * np.diff(c.get_physics_y() / c.dx)
-            else:
-                return np.array([c.material.thermal_conductivty * c.get_boundary_gradient(output.loc)])
-        elif output.var_name == 'HTC':
-            surface_temperature = 0.
-            ref_temperature = 0.
-            if output.loc == 'in':
-                # TODO introduce a get_ghost_value()[output.loc]
-                surface_temperature = 0.5 * (c.y[0] + c.get_physics_y()[0])
-                ref_temperature = c.get_physics_y()[0]
-            else:
-                # TODO introduce a get_ghost_value()[output.loc]
-                surface_temperature = 0.5 * (c.get_physics_y()[-1] + c.y[c.resolution + 1])
-                ref_temperature = c.get_physics_y()[-1]
-            htc = c.material.thermal_conductivty * c.get_boundary_gradient(output.loc) / (surface_temperature - ref_temperature)
-            return np.array([htc])
-
-
-class Post():
-
-    """Transform the Output according to the type of spatial and temporal post-processing. """
-
-    def __init__(self):
-        self.temporal_mean = 0.
-        self.output_computer = OutputComputer()
 
     def compute_instantaneous(self, c, output):
         if output.spatial_type == 'raw':
@@ -196,7 +130,7 @@ class Observer:
 
     def set_output_container(self, post, c):
         for o in c.outputs:
-            post.output_computer.set_size(c, self.nb_frames, o)
+            post.set_size(c, self.nb_frames, o)
 
     def update(self, c, ite, post):
         print("Observer is updated")
@@ -249,7 +183,7 @@ class Solver:
 
     """Docstring for Solver. """
 
-    def __init__(self, component_list, dt, time_end, time_start = 0.):
+    def __init__(self, component_list, dt, time_end, observer, time_start = 0.):
         """TODO: to be defined. """
         self.components = component_list
         # TODO: pass this dt to the equation time advance. Remove dt attribute in equation.
@@ -257,19 +191,16 @@ class Solver:
         self.time_start = time_start
         self.time_end = time_end
         self.post = Post()
-        self.observer = None
+        self.observer = observer
         self.node = Node('')
         print('Solver dt:', self.dt)
         for c in self.components:
             c.check()
             c.check_stability(dt)
             c.add_to_tree(self.node)
-
-    def set_observer(self, observer_):
-        self.observer = observer_
-        for c in self.components:
             c.set_temporal_data_size(self.observer.nb_frames)
             self.observer.set_output_container(self.post, c)
+
 
     def show_tree(self):
         print("\n")
