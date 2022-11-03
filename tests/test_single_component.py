@@ -11,7 +11,7 @@ from Physics import FiniteDifferenceTransport, FiniteVolume
 T0 = 273.15 + 25.
 EXTERIOR_TEMPERATURE = 273.15 + 33.
 INTERIOR_TEMPERATURE = T0
-FLUX = -1000.
+FLUX = -1000. # negative outward flux, so positive inward flux.
 air_exterior = ConstantComponent('air_exterior', EXTERIOR_TEMPERATURE)
 air_interior = ConstantComponent('air_interior', INTERIOR_TEMPERATURE)
 CP_BRICK = 840.0
@@ -38,6 +38,7 @@ INIT_WALL_TEMPERATURE = T0
 
 observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, DT)
 observer_2 = copy.deepcopy(observer)
+observer_3 = copy.deepcopy(observer)
 wall = Component('wall', brick, THICKNESS, INIT_WALL_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature], dx=DX, surface=1.)
 wall.set_neighbours(neighbours, neighbour_faces)
 
@@ -51,12 +52,11 @@ wall_adiabatic_2 = copy.deepcopy(wall_adiabatic)
 
 wall_flux = Component('wall_flux', brick, THICKNESS, INIT_WALL_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature], boundary_type={'left': 'dirichlet', 'right': 'flux'}, resolution=RESOLUTION, surface=1., flux={'left': None, 'right': FLUX})
 wall_flux.set_neighbours(neighbours, neighbour_faces)
-
+wall_flux_2 = copy.deepcopy(wall_flux)
 
 def test_constant_component_bc():
     assert air_exterior.get_boundary_value('left') == approx(EXTERIOR_TEMPERATURE)
     assert air_exterior.get_boundary_value('right') == approx(EXTERIOR_TEMPERATURE)
-
 
 def test_component_bc_value():
     assert wall.y[1:RESOLUTION+1] == approx(INIT_WALL_TEMPERATURE)
@@ -64,7 +64,6 @@ def test_component_bc_value():
     assert wall.y[0] == approx(INTERIOR_TEMPERATURE)
     assert wall.y[wall.resolution + 1] == approx(EXTERIOR_TEMPERATURE)
     assert wall.y[1] == approx(INIT_WALL_TEMPERATURE)
-
 
 def test_solver_single_component():
     component_to_solve_list = [wall]
@@ -77,23 +76,31 @@ def test_solver_single_component():
     assert wall.get_boundary_gradient('left') == approx(-expected_gradient)
     assert wall.get_boundary_gradient('right') == approx(expected_gradient)
 
-
 def test_adiabatic_boundary_condition():
     wall_adiabatic.update(0., 0)
     assert wall_adiabatic.y[0] == wall_adiabatic.y[1]
     assert wall_adiabatic.get_boundary_gradient('left') == 0.
 
-
-def test_adiabatic_bnoudar_condition_at_convergence():
+def test_adiabatic_boundary_condition_at_convergence():
     solver = Solver([wall_adiabatic_2], DT, TIME_END, observer_2)
     solver.run()
     # Temperature on adiabatic side should reach the imposed temperature on right side.
     assert wall_adiabatic_2.get_boundary_value('left') == approx(EXTERIOR_TEMPERATURE, rel=0.01)
     solver.compute_post()
 
-
 def test_flux_boundary_condition():
     wall_flux.update(0., 0)
-    assert wall_flux.material.thermal_conductivty * wall_flux.get_boundary_gradient('right') == approx(FLUX)
+    assert wall_flux.material.thermal_conductivty * wall_flux.get_boundary_gradient('right') == approx(-FLUX)
 
+def test_flux_boundary_condition_at_convergence():
+    solver = Solver([wall_flux_2], DT, TIME_END, observer_3)
+    solver.run()
+    # expected temperature profile is linear with a slope equal to the imposed flux / lambda.
+    expected_gradient = -FLUX / K_BRICK
+    expected_temperature_right = INTERIOR_TEMPERATURE + expected_gradient * (THICKNESS + 2 * DX)
+    expected_y = np.linspace(INTERIOR_TEMPERATURE, expected_temperature_right, RESOLUTION + 2)
+    assert np.allclose(wall_flux_2.y, expected_y, rtol=1e-3)
+    assert wall_flux_2.get_boundary_gradient('left') == approx(-expected_gradient, rel=1e-3)
+    assert wall_flux_2.get_boundary_gradient('right') == approx(expected_gradient, rel=1e-3)
+    solver.compute_post()
 

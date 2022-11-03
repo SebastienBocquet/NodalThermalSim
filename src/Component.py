@@ -235,9 +235,9 @@ class Component(Node1D):
                 if neigh.material is not None:
                     gradient_neighbour = (neigh.get_boundary_value(self.neighbour_faces[face]) -
                                           neigh.get_first_phys_value(self.neighbour_faces[face])) / self.dx
-                    flux_neighbour = -neigh.material.thermal_conductivty * gradient_neighbour
+                    flux_neighbour = neigh.material.thermal_conductivty * gradient_neighbour
                     flux_target = -flux_neighbour
-                    gradient = -flux_target / self.material.thermal_conductivty
+                    gradient = flux_target / self.material.thermal_conductivty
                     ghost_target = self.get_boundary_value(face) - self.dx * gradient
                     error = ghost_val - ghost_target
                     ghost_val += 1. * (ghost_val - ghost_target)
@@ -251,7 +251,7 @@ class Component(Node1D):
                 # fill ghost node with first physical node value.
                 self.setGhostValue(face, self.get_boundary_value(face))
             elif self.boundary_type[face] == 'flux':
-                gradient = -self.flux[face] / self.material.thermal_conductivty
+                gradient = self.flux[face] / self.material.thermal_conductivty
                 ghost_val = self.get_boundary_value(face) - self.dx * gradient
                 self.setGhostValue(face, ghost_val)
             else:
