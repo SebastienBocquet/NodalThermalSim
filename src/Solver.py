@@ -35,6 +35,7 @@ class Output():
         self.spatial_type = spatial_type
         self.temporal_type = temporal_type
         self.x = np.empty((1))
+        self.temporal_result = np.empty((1))
         self.result = np.empty((1,1))
 
 
@@ -77,14 +78,6 @@ class Post():
         elif output.spatial_type == 'mean':
             output_data = self.output_computer.compute_var(c, output)
             return np.array([np.mean(output_data)])
-        else:
-            raise ValueError
-
-    def compute_temporal(self, c, output):
-        if output.temporal_type == 'mean':
-            raise NotImplemented
-        elif output.temporal_type == 'instantaneous':
-            return self.compute_instantaneous(c, output)
         else:
             raise ValueError
 
@@ -132,36 +125,37 @@ class Observer:
     def set_output_container(self, post, c):
         for o in c.outputs:
             post.set_size(c, self.nb_frames, o)
+            o.temporal_result = np.resize(o.temporal_result, (self.nb_frames))
 
-    def update(self, c, ite, post):
+    def update(self, ite, post):
         print("Observer is updated")
         self.temporal_axis.append(get_time(ite, self.time_start, self.dt))
-        for io, output in enumerate(c.outputs):
-            c.temporal_output[self.update_count, io] = post.compute_temporal(c, output)
-            output.result[:, self.update_count] = post.compute_spatial(c, output)
         assert self.update_count < self.nb_frames
         self.update_count += 1
+
+    def update_components(self, c, post):
+        for io, output in enumerate(c.outputs):
+            output.temporal_result[self.update_count] = post.compute_instantaneous(c, output)
+            output.result[:, self.update_count] = post.compute_spatial(c, output)
 
     def is_updated(self, ite):
         return ite in self.ite_extraction
 
     def plot(self, c):
         for io, output in enumerate(c.outputs):
-            if output.size > 1:
-                fig, ax = plt.subplots()
-                for i in range(self.nb_frames):
-                    time = get_time(self.ite_extraction[i], self.time_start, self.dt)
-                    ax.plot(output.x, output.result[:, i], '-o', label="t=%ds" % time, linewidth=2.0)
-                ax.legend()
-                plt.title(f"Component {c.name}\n raw value of {output.var_name}")
-                plt.savefig(OUTPUT_FIG / f"Component_{c.name}_raw_{output.var_name}.png")
-                plt.close()
-                # plt.show()
+            fig, ax = plt.subplots()
+            for i in range(self.nb_frames):
+                time = get_time(self.ite_extraction[i], self.time_start, self.dt)
+                ax.plot(output.x, output.result[:, i], '-o', label="t=%ds" % time, linewidth=2.0)
+            ax.legend()
+            plt.title(f"Component {c.name}\n raw value of {output.var_name}")
+            plt.savefig(OUTPUT_FIG / f"Component_{c.name}_raw_{output.var_name}.png")
+            plt.close()
 
     def plot_temporal(self, c):
         for io, output in enumerate(c.outputs):
             fig, ax = plt.subplots()
-            ax.plot(self.temporal_axis, np.array(c.temporal_output[:,io]), label=f"{output.var_name}", linewidth=2.0)
+            ax.plot(self.temporal_axis, np.array(output.temporal_result), '-o', label=f"{output.var_name}", linewidth=2.0)
             ax.legend()
             loc = 0
             loc_prefix = ''
@@ -175,10 +169,9 @@ class Observer:
                 loc_prefix = ''
                 loc = ''
             plt.title(f"Component {c.name}\n {output.temporal_type} value of\n {output.spatial_type} spatial {output.var_name} {loc_prefix}{loc}")
+            # loc should be in meter or in percentage of thickness
             plt.savefig(OUTPUT_FIG / f"Component_{c.name}_{output.temporal_type}_of_{output.spatial_type}_spatial_{output.var_name}_{loc_prefix}{loc}.png")
             plt.close()
-            # plt.show()
-
 
 class Solver:
 
@@ -198,9 +191,8 @@ class Solver:
         for c in self.components:
             c.check()
             c.check_stability(dt)
-            c.add_to_tree(self.node)
-            c.set_temporal_data_size(self.observer.nb_frames)
             self.observer.set_output_container(self.post, c)
+            c.add_to_tree(self.node)
 
 
     def show_tree(self):
@@ -233,10 +225,15 @@ class Solver:
                 c.update(time, ite)
                 if self.observer is not None:
                     if self.observer.is_updated(ite):
-                        self.observer.update(c, ite, self.post)
+                        self.observer.update_components(c, self.post)
                 c.physics.advance_time(self.dt, c, ite)
+            # TODO put is_updated in update function. put component loop in update function.
+            if self.observer is not None:
+                if self.observer.is_updated(ite):
+                    self.observer.update(ite, self.post)
 
-    def compute_post(self,):
+    # TODO add a show and save args
+    def visualize(self, ):
         for c in self.components:
             if self.observer is not None:
                 self.observer.plot(c)

@@ -20,7 +20,11 @@ brick = Material(CP_BRICK, DENSITY_BRICK, K_BRICK)
 CP_AIR = 1000.
 DENSITY_AIR = 1.2
 K_AIR = 0.025 * 100
-air = Material(CP_AIR, DENSITY_AIR, K_AIR)
+K_AIR_2 = 2 * K_AIR
+K_AIR_3 = 3 * K_AIR
+air1 = Material(CP_AIR, DENSITY_AIR, K_AIR)
+air2 = Material(CP_AIR, DENSITY_AIR, K_AIR_2)
+air3 = Material(CP_AIR, DENSITY_AIR, K_AIR_3)
 
 RESOLUTION = 10
 THICKNESS = 0.14
@@ -29,58 +33,58 @@ ROOM_HEIGHT = 2.5
 ROOM_DEPTH = 2.
 ROOM_VOLUME = ROOM_WIDTH * ROOM_HEIGHT * ROOM_DEPTH
 YZ_SURFACE = ROOM_HEIGHT * ROOM_DEPTH
-DX = THICKNESS / (RESOLUTION - 1)
+DX = THICKNESS / RESOLUTION
 RESOLUTION = 10
-DT_BRICK = 0.9 * DX**2 / (2 * (K_BRICK / (DENSITY_BRICK * CP_BRICK)))
-DT_AIR = 0.9 * DX**2 / (2 * (K_AIR / (DENSITY_AIR * CP_AIR)))
-DT = min(DT_AIR, DT_BRICK)
-print('dt air', DT_AIR)
-print('dt brick', DT_BRICK)
+DT = 0.9 * DX**2 / (2 * (K_AIR_3 / (DENSITY_AIR * CP_AIR)))
 
 TIME_START = 0.
-TIME_END = 24 * 3600.
+TIME_END = 120.
 NB_FRAMES = 5
 OBSERVER_PERIOD = (int)(TIME_END / NB_FRAMES)
 
-output_temperature = Output('temperature', spatial_type='mean')
-output_heat_flux = Output(var_name='heat_flux', spatial_type='raw')
+output_temperature = Output('temperature', spatial_type='raw')
+output_heat_flux = Output('heat_flux', spatial_type='raw')
 
 neighbour_faces = {'left': 'right', 'right': 'left'}
 
-observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, [output_temperature, output_heat_flux])
+observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, DT)
 
-# air_exterior = ConstantComponent('air_exterior', EXTERIOR_TEMPERATURE)
-# air_interior = ConstantComponent('air_interior', INTERIOR_TEMPERATURE)
-# air_exterior = Component('air', air, THICKNESS, EXTERIOR_TEMPERATURE, FiniteDifferenceTransport(), boundary_type={'left': 'adiabatic', 'right': 'dirichlet'}, dx=DX, surface=YZ_SURFACE, observer=observer_)
-# observer_ = copy.deepcopy(observer)
-# air_interior = Component('air', air, THICKNESS, INTERIOR_TEMPERATURE, FiniteDifferenceTransport(), boundary_type={'left': 'dirichlet', 'right': 'adiabatic'}, dx=DX, surface=YZ_SURFACE, observer=observer_)
+wall_left = Component('wall_left', air1, THICKNESS, INIT_WALL_TEMPERATURE,
+                      FiniteDifferenceTransport(),
+                      [output_temperature, output_heat_flux],
+                      boundary_type={'left': 'flux', 'right': 'dirichlet'},
+                      dx=DX, surface=YZ_SURFACE,
+                      flux={'left': FLUX, 'right': None})
+wall_middle = Component('wall_middle', air2, THICKNESS, INIT_WALL_TEMPERATURE,
+                FiniteDifferenceTransport(),
+                [copy.deepcopy(output_temperature), copy.deepcopy(output_heat_flux)],
+                dx=DX, surface=YZ_SURFACE)
+wall_right = Component('wall_right', air3, THICKNESS, INIT_WALL_TEMPERATURE,
+                       FiniteDifferenceTransport(),
+                       [copy.deepcopy(output_temperature), copy.deepcopy(output_heat_flux)],
+                       boundary_type={'left': 'dirichlet', 'right': 'flux'},
+                       dx=DX, surface=YZ_SURFACE,
+                       flux={'right': None, 'right': -FLUX})
 
-observer_ = copy.deepcopy(observer)
-wall_left = Component('wall_left', brick, THICKNESS, INIT_WALL_TEMPERATURE, FiniteDifferenceTransport(), boundary_type={'left': 'flux', 'right': 'dirichlet'}, dx=DX, surface=YZ_SURFACE, observer=observer_, flux={'left': FLUX, 'right': None})
-observer_ = copy.deepcopy(observer)
-wall_right = Component('wall_right', brick, THICKNESS, INIT_WALL_TEMPERATURE, FiniteDifferenceTransport(), boundary_type={'left': 'dirichlet', 'right': 'flux'}, dx=DX, surface=YZ_SURFACE, observer=observer_, flux={'right': None, 'right': -FLUX})
-
-# 50W source
-# s = Source(50. / ROOM_VOLUME)
-observer_ = copy.deepcopy(observer)
-air = Component('air', air, THICKNESS, INIT_WALL_TEMPERATURE, FiniteDifferenceTransport(), dx=DX, surface=YZ_SURFACE, observer=observer_)
-
-# air_exterior.set_neighbours({'left': None, 'right': wall_left}, {'left': 'right', 'right': 'left'})
-# air_interior.set_neighbours({'left': wall_right, 'right': None}, {'left': 'right', 'right': 'left'})
-wall_left.set_neighbours({'left': None, 'right': air}, {'left': 'right', 'right': 'left'})
-wall_right.set_neighbours({'left': air, 'right': None}, {'left': 'right', 'right': 'left'})
-air.set_neighbours({'left': wall_left, 'right': wall_right})
+wall_left.set_neighbours({'left': None, 'right': wall_middle}, {'left': 'right', 'right': 'left'})
+wall_right.set_neighbours({'left': wall_middle, 'right': None}, {'left': 'right', 'right': 'left'})
+wall_middle.set_neighbours({'left': wall_left, 'right': wall_right})
 
 # TODO: use only two components. Check conservation of heat flux.
 # check that the 'electric resistance' is respected.
 def test_wall_air_wall():
-    component_to_solve_list = [wall_left, air, wall_right]
-    solver = Solver(component_to_solve_list, DT, TIME_END)
+    component_to_solve_list = [wall_left, wall_middle, wall_right]
+    solver = Solver(component_to_solve_list, DT, TIME_END, observer)
     solver.run()
-    solver.post()
-
-def test_show_tree():
-    component_to_solve_list = [wall_left, air, wall_right]
-    solver = Solver(component_to_solve_list, DT, TIME_END)
-    solver.show_tree()
-
+    solver.visualize()
+    expected_flux = np.ones((RESOLUTION)) * FLUX
+    thermal_conductivities = [K_AIR, K_AIR_2, K_AIR_3]
+    for i in range(len(component_to_solve_list)):
+        # check conservation of heat flux through all layers
+        assert np.allclose(component_to_solve_list[i].outputs[1].result[:,NB_FRAMES-1], expected_flux)
+        # check that temperature profile is linear
+        # and its slope corresponds to the thermal resistance analogy
+        resistance = THICKNESS / (YZ_SURFACE * thermal_conductivities[i])
+        expected_grad_temp = np.ones((RESOLUTION)) * resistance * (FLUX * YZ_SURFACE) / THICKNESS
+        grad_temp = np.diff(component_to_solve_list[i].outputs[0].result[:, NB_FRAMES - 1]) / DX
+        assert np.allclose(grad_temp, expected_grad_temp)

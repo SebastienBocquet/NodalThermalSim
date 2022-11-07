@@ -175,10 +175,6 @@ class Component(Node1D):
         print('Component discretization step (m):', self.dx)
         print('Component diffusivity:', self.material.diffusivity)
 
-    def set_temporal_data_size(self, nb_frames):
-        self.temporal_output = np.zeros((nb_frames, len(self.outputs)))
-
-
     def check_stability(self, dt):
         if (dt / self.dx ** 2) >= 1.0 / (2 * self.material.diffusivity):
             raise ValueError
@@ -194,10 +190,8 @@ class Component(Node1D):
         assert self.boundary_type.keys() == self.ghost_index.keys()
         assert self.boundary_val_index.keys() == self.ghost_index.keys()
 
-
     def get_physics_x(self):
         return self.x[HALF_STENCIL:self.resolution+HALF_STENCIL]
-
 
     def get_physics_y(self):
         return self.y[HALF_STENCIL:self.resolution+HALF_STENCIL]
@@ -302,15 +296,15 @@ def create_component(
     outputs,
     boundary_type={'left': 'dirichlet', 'right': 'dirichlet'},
     resolution=10,
-    dx=-1,
-    surface=1.0,
-    source=None,
     flux={'left': None, 'right': None},
 ):
 
     if type == '1D':
         physics_default = FiniteDifferenceTransport()
-        c = Component(name, material, dimensions[X], y0, physics_default(), outputs, resolution, surface=dimensions[Y] * dimensions[Z])
+        c = Component(name, material, dimensions[X], y0, physics_default(),
+                      outputs, boundary_type, resolution,
+                      surface=dimensions[Y] * dimensions[Z],
+                      source=None, flux=flux)
         return c
     else:
         raise ValueError()

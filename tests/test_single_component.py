@@ -36,9 +36,6 @@ neighbours = {'left': air_interior, 'right': air_exterior}
 neighbour_faces = {'left': 'right', 'right': 'left'}
 INIT_WALL_TEMPERATURE = T0
 
-observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, DT)
-observer_2 = copy.deepcopy(observer)
-observer_3 = copy.deepcopy(observer)
 wall = Component('wall', brick, THICKNESS, INIT_WALL_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature], dx=DX, surface=1.)
 wall.set_neighbours(neighbours, neighbour_faces)
 
@@ -67,9 +64,10 @@ def test_component_bc_value():
 
 def test_solver_single_component():
     component_to_solve_list = [wall]
+    observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, DT)
     solver = Solver(component_to_solve_list, DT, TIME_END, observer)
     solver.run()
-    solver.compute_post()
+    solver.visualize()
     # test solution against linear profile between exterior and interior temperature. Ghost nodes are included.
     expected_y = np.linspace(INTERIOR_TEMPERATURE, EXTERIOR_TEMPERATURE, RESOLUTION+2)
     assert wall.y == approx(expected_y)
@@ -82,18 +80,20 @@ def test_adiabatic_boundary_condition():
     assert wall_adiabatic.get_boundary_gradient('left') == 0.
 
 def test_adiabatic_boundary_condition_at_convergence():
-    solver = Solver([wall_adiabatic_2], DT, TIME_END, observer_2)
+    observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, DT)
+    solver = Solver([wall_adiabatic_2], DT, TIME_END, observer)
     solver.run()
     # Temperature on adiabatic side should reach the imposed temperature on right side.
     assert wall_adiabatic_2.get_boundary_value('left') == approx(EXTERIOR_TEMPERATURE, rel=0.01)
-    solver.compute_post()
+    solver.visualize()
 
 def test_flux_boundary_condition():
     wall_flux.update(0., 0)
     assert wall_flux.material.thermal_conductivty * wall_flux.get_boundary_gradient('right') == approx(-FLUX)
 
 def test_flux_boundary_condition_at_convergence():
-    solver = Solver([wall_flux_2], DT, TIME_END, observer_3)
+    observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, DT)
+    solver = Solver([wall_flux_2], DT, TIME_END, observer)
     solver.run()
     # expected temperature profile is linear with a slope equal to the imposed flux / lambda.
     expected_gradient = -FLUX / K_BRICK
@@ -102,5 +102,5 @@ def test_flux_boundary_condition_at_convergence():
     assert np.allclose(wall_flux_2.y, expected_y, rtol=1e-3)
     assert wall_flux_2.get_boundary_gradient('left') == approx(-expected_gradient, rel=1e-3)
     assert wall_flux_2.get_boundary_gradient('right') == approx(expected_gradient, rel=1e-3)
-    solver.compute_post()
+    solver.visualize()
 

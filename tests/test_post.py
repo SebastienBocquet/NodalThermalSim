@@ -98,13 +98,13 @@ def test_raw_output():
     # run one iteration.
     solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
     solver.run()
-    solver.compute_post()
+    solver.visualize()
     assert output_temperature.size == RESOLUTION
     assert output_temperature.x == approx(X_PHYSICS)
     assert (output_temperature.result[:,0] == INIT_AIR_TEMPERATURE).all()
     assert len(observer.temporal_axis) == 1
     assert observer.temporal_axis[:] == [TIME_START]
-    assert (room.temporal_output[:,0] == [INIT_AIR_TEMPERATURE[INDEX_TEMPORAL_DEFAULT]]).all()
+    assert output_temperature.temporal_result[0] == INIT_AIR_TEMPERATURE[INDEX_TEMPORAL_DEFAULT]
 
 
 def test_raw_output_temporal_loc():
@@ -116,8 +116,8 @@ def test_raw_output_temporal_loc():
     # run one iteration.
     solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
     solver.run()
-    solver.compute_post()
-    assert (room.temporal_output[:,0] == [INIT_AIR_TEMPERATURE[INDEX_TEMPORAL]]).all()
+    solver.visualize()
+    assert output_temperature_temporal_loc.temporal_result[0] == INIT_AIR_TEMPERATURE[INDEX_TEMPORAL]
 
 
 def test_spatial_avg_output():
@@ -129,13 +129,12 @@ def test_spatial_avg_output():
     # run one iteration
     solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
     solver.run()
-    solver.compute_post()
+    solver.visualize()
     assert output_temperature_space_avg.size == 1
     assert (output_temperature_space_avg.x == [X_PHYSICS[INDEX_TEMPORAL_DEFAULT]]).all()
     assert (output_temperature_space_avg.result[:,0] == [np.mean(INIT_AIR_TEMPERATURE)]).all()
     assert len(observer.temporal_axis) == 1
-    assert (room.temporal_output[:,0] == [np.mean(INIT_AIR_TEMPERATURE)]).all()
-
+    assert output_temperature_space_avg.temporal_result[0] == np.mean(INIT_AIR_TEMPERATURE)
 
 def test_gradient_output():
     # output is computed at ite0
@@ -146,9 +145,9 @@ def test_gradient_output():
     # run one iteration.
     solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
     solver.run()
-    solver.compute_post()
+    solver.visualize()
     assert output_gradient.result[:,0] == approx(np.diff(INIT_AIR_TEMPERATURE) / DX)
-    assert room.temporal_output[:,0] == approx([T0 / DX])
+    assert output_gradient.temporal_result[0] == approx(T0 / DX)
 
 
 def test_boundary_output():
@@ -160,10 +159,31 @@ def test_boundary_output():
     # run one iteration
     solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
     solver.run()
-    solver.compute_post()
+    solver.visualize()
     expected_value = -np.diff(INIT_AIR_TEMPERATURE)[0] / DX
     assert output_gradient_left.size == 1
     assert output_gradient_left.x == approx([0.])
     assert output_gradient_left.result[0,0] == approx(expected_value)
     assert len(observer.temporal_axis) == 1
-    assert room.temporal_output[0,0] == approx(expected_value)
+    assert output_gradient_left.temporal_result[0] == approx(expected_value)
+
+def test_two_outputs():
+    # output is computed at ite0
+    observer = Observer(TIME_START, DT, TIME_START + DT, DT)
+    room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(),
+                     [output_temperature_space_avg, output_gradient], resolution=RESOLUTION,
+                     surface=BOX_DEPTH*BOX_HEIGHT)
+    room.set_neighbours(neighbours)
+    component_to_solve_list = [room]
+    # run one iteration
+    solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
+    solver.run()
+    solver.visualize()
+    assert output_temperature_space_avg.size == 1
+    assert (output_temperature_space_avg.x == [X_PHYSICS[INDEX_TEMPORAL_DEFAULT]]).all()
+    assert (output_temperature_space_avg.result[:,0] == [np.mean(INIT_AIR_TEMPERATURE)]).all()
+    assert len(observer.temporal_axis) == 1
+    assert (output_temperature_space_avg.temporal_result == [np.mean(INIT_AIR_TEMPERATURE)]).all()
+
+    assert output_gradient.result[:,0] == approx(np.diff(INIT_AIR_TEMPERATURE) / DX)
+    assert output_gradient.temporal_result[0] == approx(T0 / DX)
