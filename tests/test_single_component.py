@@ -4,7 +4,7 @@ import copy
 import numpy as np
 from pytest import approx
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
-from Component import ConstantComponent, Material, Component, Room
+from Component import ConstantComponent, Material, BoundaryCondition, Component, Room
 from Solver import Solver, Observer, Output
 from Physics import FiniteDifferenceTransport, FiniteVolume
 
@@ -43,11 +43,20 @@ linear_profile = np.linspace(INTERIOR_TEMPERATURE, EXTERIOR_TEMPERATURE, RESOLUT
 # The temperature is imposed at the ghost nodes. So we add 2 dx to the thickness, to obtain the distance between the ghost nodes.
 expected_gradient = (EXTERIOR_TEMPERATURE - INTERIOR_TEMPERATURE) / (THICKNESS + 2 * DX)
 
-wall_adiabatic = Component('wall_adiabatic', brick, THICKNESS, INIT_WALL_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature], boundary_type={'left': 'adiabatic', 'right': 'dirichlet'}, resolution=RESOLUTION, surface=1.)
+bc_diri = BoundaryCondition('dirichlet')
+bc_adia = BoundaryCondition('adiabatic')
+bc_flux = BoundaryCondition('flux', FLUX)
+wall_adiabatic = Component('wall_adiabatic', brick, THICKNESS, INIT_WALL_TEMPERATURE,
+                           FiniteDifferenceTransport(), [output_temperature],
+                           boundary={'left': bc_adia, 'right': bc_diri},
+                           resolution=RESOLUTION, surface=1.)
 wall_adiabatic.set_neighbours(neighbours, neighbour_faces)
 wall_adiabatic_2 = copy.deepcopy(wall_adiabatic)
 
-wall_flux = Component('wall_flux', brick, THICKNESS, INIT_WALL_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature], boundary_type={'left': 'dirichlet', 'right': 'flux'}, resolution=RESOLUTION, surface=1., flux={'left': None, 'right': FLUX})
+wall_flux = Component('wall_flux', brick, THICKNESS, INIT_WALL_TEMPERATURE,
+                      FiniteDifferenceTransport(), [output_temperature],
+                      boundary={'left': bc_diri, 'right': bc_flux},
+                      resolution=RESOLUTION, surface=1.)
 wall_flux.set_neighbours(neighbours, neighbour_faces)
 wall_flux_2 = copy.deepcopy(wall_flux)
 
@@ -57,7 +66,7 @@ def test_constant_component_bc():
 
 def test_component_bc_value():
     assert wall.y[1:RESOLUTION+1] == approx(INIT_WALL_TEMPERATURE)
-    wall.update(0., 0)
+    wall.update_ghost_node(0., 0)
     assert wall.y[0] == approx(INTERIOR_TEMPERATURE)
     assert wall.y[wall.resolution + 1] == approx(EXTERIOR_TEMPERATURE)
     assert wall.y[1] == approx(INIT_WALL_TEMPERATURE)
@@ -75,7 +84,7 @@ def test_solver_single_component():
     assert wall.get_boundary_gradient('right') == approx(expected_gradient)
 
 def test_adiabatic_boundary_condition():
-    wall_adiabatic.update(0., 0)
+    wall_adiabatic.update_ghost_node(0., 0)
     assert wall_adiabatic.y[0] == wall_adiabatic.y[1]
     assert wall_adiabatic.get_boundary_gradient('left') == 0.
 
@@ -88,7 +97,7 @@ def test_adiabatic_boundary_condition_at_convergence():
     solver.visualize()
 
 def test_flux_boundary_condition():
-    wall_flux.update(0., 0)
+    wall_flux.update_ghost_node(0., 0)
     assert wall_flux.material.thermal_conductivty * wall_flux.get_boundary_gradient('right') == approx(-FLUX)
 
 def test_flux_boundary_condition_at_convergence():

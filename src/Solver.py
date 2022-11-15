@@ -210,7 +210,6 @@ class Solver:
             else:
                 message = 'first 100 values'
                 phys_values = c.get_physics_y()[:100]
-            print('Component name:', c.name)
             print(f'Component physical values ({message}):', phys_values)
             print("")
 
@@ -222,7 +221,7 @@ class Solver:
             if ite % INTERMEDIATE_STATUS_PERIOD == 0:
                 self.show_status(ite, time)
             for c in self.components:
-                c.update(time, ite)
+                c.update_ghost_node(time, ite)
                 if self.observer is not None:
                     if self.observer.is_updated(ite):
                         self.observer.update_components(c, self.post)

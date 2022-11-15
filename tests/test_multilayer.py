@@ -4,7 +4,7 @@ import copy
 import numpy as np
 from pytest import approx
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
-from Component import ConstantComponent, Material, Component, Room, Source
+from Component import ConstantComponent, Material, BoundaryCondition, Component, Room, Source
 from Solver import Solver, Observer, Output
 from Physics import FiniteDifferenceTransport, FiniteVolume
 
@@ -49,12 +49,15 @@ neighbour_faces = {'left': 'right', 'right': 'left'}
 
 observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, DT)
 
+bc_diri = BoundaryCondition('dirichlet')
+bc_adia = BoundaryCondition('adiabatic')
+bc_flux_left = BoundaryCondition('flux', FLUX)
+bc_flux_right = BoundaryCondition('flux', -FLUX)
 wall_left = Component('wall_left', air1, THICKNESS, INIT_WALL_TEMPERATURE,
                       FiniteDifferenceTransport(),
                       [output_temperature, output_heat_flux],
-                      boundary_type={'left': 'flux', 'right': 'dirichlet'},
-                      dx=DX, surface=YZ_SURFACE,
-                      flux={'left': FLUX, 'right': None})
+                      boundary={'left': bc_flux_left, 'right': bc_diri},
+                      dx=DX, surface=YZ_SURFACE)
 wall_middle = Component('wall_middle', air2, THICKNESS, INIT_WALL_TEMPERATURE,
                 FiniteDifferenceTransport(),
                 [copy.deepcopy(output_temperature), copy.deepcopy(output_heat_flux)],
@@ -62,17 +65,15 @@ wall_middle = Component('wall_middle', air2, THICKNESS, INIT_WALL_TEMPERATURE,
 wall_right = Component('wall_right', air3, THICKNESS, INIT_WALL_TEMPERATURE,
                        FiniteDifferenceTransport(),
                        [copy.deepcopy(output_temperature), copy.deepcopy(output_heat_flux)],
-                       boundary_type={'left': 'dirichlet', 'right': 'flux'},
-                       dx=DX, surface=YZ_SURFACE,
-                       flux={'right': None, 'right': -FLUX})
+                       boundary={'left': bc_diri, 'right': bc_flux_right},
+                       dx=DX, surface=YZ_SURFACE)
 
-wall_left.set_neighbours({'left': None, 'right': wall_middle}, {'left': 'right', 'right': 'left'})
-wall_right.set_neighbours({'left': wall_middle, 'right': None}, {'left': 'right', 'right': 'left'})
+wall_left.set_neighbours({'left': None, 'right': wall_middle})
+wall_right.set_neighbours({'left': wall_middle, 'right': None})
 wall_middle.set_neighbours({'left': wall_left, 'right': wall_right})
 
-# TODO: use only two components. Check conservation of heat flux.
-# check that the 'electric resistance' is respected.
 def test_wall_air_wall():
+    # check that the 'electric resistance' analogy is respected.
     component_to_solve_list = [wall_left, wall_middle, wall_right]
     solver = Solver(component_to_solve_list, DT, TIME_END, observer)
     solver.run()
@@ -88,3 +89,8 @@ def test_wall_air_wall():
         expected_grad_temp = np.ones((RESOLUTION)) * resistance * (FLUX * YZ_SURFACE) / THICKNESS
         grad_temp = np.diff(component_to_solve_list[i].outputs[0].result[:, NB_FRAMES - 1]) / DX
         assert np.allclose(grad_temp, expected_grad_temp)
+
+def test_show_tree():
+    component_to_solve_list = [wall_left, wall_middle, wall_right]
+    solver = Solver(component_to_solve_list, DT, TIME_END, observer)
+    solver.show_tree()

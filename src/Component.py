@@ -1,10 +1,15 @@
 import copy
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+from abc import ABC, abstractmethod
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d
 from anytree import Node, RenderTree
 from Solver import HALF_STENCIL
 from Physics import FiniteDifferenceTransport, FiniteVolume
+
 
 X = 0
 Y = 1
@@ -33,43 +38,6 @@ class Source():
         pass
 
 
-class NodeBase:
-
-    """Docstring for Node. """
-
-    def __init__(self):
-        """TODO: to be defined. """
-        self.neighbours = None
-        self.neighbour_faces = None
-
-    def set_neighbours(self, neighbours, faces={'left': 'right', 'right': 'left'}, parent_node=None):
-        self.neighbours = neighbours
-        self.neighbour_faces = faces
-        assert self.neighbours.keys() == self.neighbour_faces.keys()
-
-    def get_boundary_value(self, loc):
-            raise NotImplementedError
-
-    def get_first_phys_value(self, loc):
-            raise NotImplementedError
-
-    def get_boundary_gradient(self, loc):
-        raise NotImplementedError
-
-    def update(self, time, ite):
-        raise NotImplementedError
-
-
-class Node1D(NodeBase):
-
-    """Docstring for Node1D. """
-
-    def __init__(self):
-        """TODO: to be defined. """
-        super().__init__()
-        # assert len(self.neighbours) == 2
-
-
 class Material:
 
     """Docstring for Air. """
@@ -85,6 +53,106 @@ class Material:
     def compute_diffusivity(self):
         return self.thermal_conductivty / (self.cp * self.density)
 
+class BoundaryCondition:
+
+    def __init__(self, type, flux=None):
+        self.type = type
+        self.flux = flux
+
+    def compute(self, neigh, neighbour_face, boundary_value, dx, thermal_conductivity):
+        if self.type == 'dirichlet':
+            # fill ghost node with the neighbour first physical node value, corrected to impose
+            # a gradient that ensures heat flux conservation through component interface.
+            ghost_val = neigh.get_boundary_value(neighbour_face)
+            if neigh.material is not None:
+                gradient_neighbour = (neigh.get_boundary_value(neighbour_face) -
+                                      neigh.get_first_phys_value(neighbour_face)) / dx
+                flux_neighbour = neigh.material.thermal_conductivty * gradient_neighbour
+                flux_target = -flux_neighbour
+                gradient = flux_target / thermal_conductivity
+                ghost_target = boundary_value - dx * gradient
+                error = ghost_val - ghost_target
+                ghost_val += 1. * (ghost_val - ghost_target)
+                # real_flux = -self.material.thermal_conductivity * (ghost_val - self.get_boundary_value(face)) / self.dx
+                # if ite % 10000 == 0:
+                #     print('error on ghost temperature', error)
+                #     print('flux', real_flux)
+                #     print('flux neighbour', flux_neighbour)
+            return ghost_val
+        elif self.type == 'adiabatic':
+            # fill ghost node with first physical node value.
+            return boundary_value
+        elif self.type == 'flux':
+            gradient = self.flux / thermal_conductivity
+            ghost_val = boundary_value - dx * gradient
+            return ghost_val
+        else:
+            raise ValueError
+
+class NodeBase(ABC):
+
+    def __init__(self, name, resolution, y0, delta_x, dx=-1):
+        """
+
+        Args:
+            name: name of the component
+            resolution: number of mesh points
+            y0: initial value for y
+            delta_x: length of the mesh
+            dx: length of mesh cells. If negative or null,
+            dx is determined from resolution. If stricly positive,
+            resolution is determined from dx.
+        """
+        self.name = name
+        if dx > 0:
+            self.dx = dx
+            self.resolution = (int)(delta_x / dx + 1)
+        else:
+            self.resolution = resolution
+            self.dx = delta_x / (self.resolution - 1)
+        assert(self.resolution > 1)
+        self.neighbours = None
+        self.neighbour_faces = None
+        x0 = 0.
+        self.x = np.linspace(x0 - HALF_STENCIL * self.dx,
+                             (self.resolution - 1 + HALF_STENCIL) * self.dx,
+                             num=self.resolution + 2 * HALF_STENCIL)
+        self.y = np.zeros((self.resolution + 2 * HALF_STENCIL))
+        self.y[HALF_STENCIL:self.resolution + HALF_STENCIL] = y0
+
+    def add_to_tree(self, node):
+        node_ = Node(self.name, parent=node)
+        for n in self.neighbours.values():
+            if n is not None:
+                Node(n.name, parent=node_)
+
+    def get_physics_x(self):
+        return self.x[HALF_STENCIL:self.resolution+HALF_STENCIL]
+
+    def get_physics_y(self):
+        return self.y[HALF_STENCIL:self.resolution+HALF_STENCIL]
+
+    def set_neighbours(self, neighbours, faces={'left': 'right', 'right': 'left'}):
+        self.neighbours = neighbours
+        self.neighbour_faces = faces
+        assert self.neighbours.keys() == self.neighbour_faces.keys()
+
+    @abstractmethod
+    def get_boundary_value(self, loc):
+        return
+
+    @abstractmethod
+    def get_first_phys_value(self, loc):
+        return
+
+    @abstractmethod
+    def get_boundary_gradient(self, loc):
+        return
+
+    @abstractmethod
+    def update_ghost_node(self, time, ite):
+        return
+
 
 class ConstantComponent(NodeBase):
 
@@ -93,7 +161,10 @@ class ConstantComponent(NodeBase):
     def __init__(self, name, y0):
         """TODO: to be defined. """
 
-        super().__init__()
+        RESOLUTION = 2
+        DELTA_X = 1.
+
+        super().__init__(name, RESOLUTION, y0, DELTA_X)
         self.name = name
         self.y = y0
         self.material = None
@@ -107,14 +178,14 @@ class ConstantComponent(NodeBase):
     def get_first_phys_value(self, loc):
         return self.y
 
-    def update(self):
+    def update_ghost_node(self, time, ite):
         pass
 
 
-# TODO define an equation as attribute
-class Component(Node1D):
+class Component(NodeBase):
 
-    """Docstring for Component2D. 
+    """
+    Component1D
     number of ghost node on each side is HALF_STENCIL.
     There are (resolution) physical nodes, plus (2 * HALF_STENCIL) ghost nodes.
     There are (resolution-1) cells in the physical range.
@@ -129,72 +200,40 @@ class Component(Node1D):
         y0,
         physics,
         outputs,
-        boundary_type={'left': 'dirichlet', 'right': 'dirichlet'},
+        boundary={'left': BoundaryCondition('dirichlet'), 'right': BoundaryCondition('dirichlet')},
         resolution=10,
         dx=-1,
         surface=1.0,
         source=None,
-        # TODO put in a BoundaryCondition object
-        flux={'left': None, 'right': None},
     ):
-        """TODO: to be defined. """
 
-        super().__init__()
-        self.name = name
+        super().__init__(name, resolution, y0, thickness, dx)
         self.material = material
         self.thickness = thickness
-        if dx > 0:
-            self.dx = dx
-            self.resolution = (int)(thickness / dx + 1)
-        else:
-            self.resolution = resolution
-            self.dx = self.thickness / (self.resolution - 1)
-        assert(self.resolution > 1)
         self.surface = surface
         self.volume = thickness * surface
-        self.y = np.zeros((self.resolution + 2 * HALF_STENCIL))
-        self.y[HALF_STENCIL:self.resolution+HALF_STENCIL] = y0
         self.physics = physics
         physics.y_mean_conservative = y0
         if source is None:
             self.source = Source(0., self.resolution)
         else:
             self.source = source
-        self.boundary_type = boundary_type
+        self.boundary = boundary
         self.ghost_index = GHOST_INDEX
         self.boundary_val_index = BOUNDARY_VAL_INDEX
         self.first_phys_val_index = FIRST_PHYS_VAL_INDEX
-        self.flux = flux
-        x0 = 0.
-        self.x = np.linspace(x0 - HALF_STENCIL * self.dx,
-                             (self.resolution - 1 + HALF_STENCIL) * self.dx,
-                             num=self.resolution + 2 * HALF_STENCIL)
         self.outputs = outputs
-        self.temporal_output = None
-        print('Component name:', self.name)
-        print('Component discretization step (m):', self.dx)
-        print('Component diffusivity:', self.material.diffusivity)
+        logger.info(f'Component name is {self.name}')
+        logger.info(f'Component discretization step (m) is {self.dx}')
+        logger.info(f'Component diffusivity is {self.material.diffusivity}')
 
     def check_stability(self, dt):
         if (dt / self.dx ** 2) >= 1.0 / (2 * self.material.diffusivity):
             raise ValueError
 
-    def add_to_tree(self, node):
-        node_ = Node(self.name, parent=node)
-        for n in self.neighbours.values():
-            if n is not None:
-                Node(n.name, parent=node_)
-
     def check(self):
-        # __import__('pudb').set_trace()
-        assert self.boundary_type.keys() == self.ghost_index.keys()
+        assert self.boundary.keys() == self.ghost_index.keys()
         assert self.boundary_val_index.keys() == self.ghost_index.keys()
-
-    def get_physics_x(self):
-        return self.x[HALF_STENCIL:self.resolution+HALF_STENCIL]
-
-    def get_physics_y(self):
-        return self.y[HALF_STENCIL:self.resolution+HALF_STENCIL]
 
     def setGhostValue(self, face, val):
         self.y[self.ghost_index[face]] = val
@@ -216,40 +255,16 @@ class Component(Node1D):
         return self.y[self.first_phys_val_index[loc]]
 
     # TODO rename update_ghost_node
-    def update(self, time, ite):
+    def update_ghost_node(self, time, ite):
         # this implementation works only for 1 ghost point, ie HALF_STENCIL=1.
         # use a list of opposite index to automatically access the other link.
         assert(HALF_STENCIL == 1)
         self.source.update(time)
         for face, neigh in self.neighbours.items():
-            if self.boundary_type[face] == 'dirichlet':
-                # fill ghost node with the neighbour first physical node value, corrected to impose
-                # a gradient that ensures heat flux conservation through component interface.
-                ghost_val = neigh.get_boundary_value(self.neighbour_faces[face])
-                if neigh.material is not None:
-                    gradient_neighbour = (neigh.get_boundary_value(self.neighbour_faces[face]) -
-                                          neigh.get_first_phys_value(self.neighbour_faces[face])) / self.dx
-                    flux_neighbour = neigh.material.thermal_conductivty * gradient_neighbour
-                    flux_target = -flux_neighbour
-                    gradient = flux_target / self.material.thermal_conductivty
-                    ghost_target = self.get_boundary_value(face) - self.dx * gradient
-                    error = ghost_val - ghost_target
-                    ghost_val += 1. * (ghost_val - ghost_target)
-                    # real_flux = -self.material.thermal_conductivty * (ghost_val - self.get_boundary_value(face)) / self.dx
-                    # if ite % 10000 == 0:
-                    #     print('error on ghost temperature', error)
-                    #     print('flux', real_flux)
-                    #     print('flux neighbour', flux_neighbour)
-                self.setGhostValue(face, ghost_val)
-            elif self.boundary_type[face] == 'adiabatic':
-                # fill ghost node with first physical node value.
-                self.setGhostValue(face, self.get_boundary_value(face))
-            elif self.boundary_type[face] == 'flux':
-                gradient = self.flux[face] / self.material.thermal_conductivty
-                ghost_val = self.get_boundary_value(face) - self.dx * gradient
-                self.setGhostValue(face, ghost_val)
-            else:
-                raise ValueError
+            ghost_val = self.boundary[face].compute(neigh, self.neighbour_faces[face],
+                                                    self.get_boundary_value(face),
+                                                    self.dx, self.material.thermal_conductivty)
+            self.setGhostValue(face, ghost_val)
 
 
 class Room(Component):
