@@ -14,9 +14,6 @@ from Physics import FiniteDifferenceTransport, FiniteVolume
 X = 0
 Y = 1
 Z = 2
-GHOST_INDEX = {'left': 0, 'right': -1}
-BOUNDARY_VAL_INDEX = {'left': 1, 'right': -2}
-FIRST_PHYS_VAL_INDEX = {'left': 2, 'right': -3}
 
 
 class Source():
@@ -52,6 +49,7 @@ class Material:
 
     def compute_diffusivity(self):
         return self.thermal_conductivty / (self.cp * self.density)
+
 
 class BoundaryCondition:
 
@@ -89,7 +87,12 @@ class BoundaryCondition:
         else:
             raise ValueError
 
+
 class NodeBase(ABC):
+
+    GHOST_INDEX = {'left': 0, 'right': -1}
+    BOUNDARY_VAL_INDEX = {'left': 1, 'right': -2}
+    FIRST_PHYS_VAL_INDEX = {'left': 2, 'right': -3}
 
     def __init__(self, name, resolution, y0, delta_x, dx=-1):
         """
@@ -104,6 +107,7 @@ class NodeBase(ABC):
             resolution is determined from dx.
         """
         self.name = name
+        self.material = None
         if dx > 0:
             self.dx = dx
             self.resolution = (int)(delta_x / dx + 1)
@@ -111,14 +115,18 @@ class NodeBase(ABC):
             self.resolution = resolution
             self.dx = delta_x / (self.resolution - 1)
         assert(self.resolution > 1)
-        self.neighbours = None
-        self.neighbour_faces = None
-        x0 = 0.
-        self.x = np.linspace(x0 - HALF_STENCIL * self.dx,
-                             (self.resolution - 1 + HALF_STENCIL) * self.dx,
-                             num=self.resolution + 2 * HALF_STENCIL)
-        self.y = np.zeros((self.resolution + 2 * HALF_STENCIL))
-        self.y[HALF_STENCIL:self.resolution + HALF_STENCIL] = y0
+        self.neighbours = {'x': None, 'y': None, 'z': None}
+        self.neighbours_faces = {'x': None, 'y': None, 'z': None}
+        self.neighbours_faces = {'x': None, 'y': None, 'z': None}
+        self.boundary = None
+
+    def check(self):
+        assert self.boundary.keys() == self.GHOST_INDEX.keys()
+        assert self.BOUNDARY_VAL_INDEX.keys() == self.GHOST_INDEX.keys()
+
+    def check_stability(self, dt):
+        if (dt / self.dx ** 2) >= 1.0 / (2 * self.material.diffusivity):
+            raise ValueError
 
     def add_to_tree(self, node):
         node_ = Node(self.name, parent=node)
@@ -149,22 +157,38 @@ class NodeBase(ABC):
     def get_boundary_gradient(self, loc):
         return
 
-    @abstractmethod
-    def update_ghost_node(self, time, ite):
-        return
+    def get_ghost_value(self, loxis='x'):
+        return self.val[axis][self.GHOST_INDEX[loc]]
+
+    def get_boundary_value(self, loc, axis='x'):
+        return self.val[axis][self.BOUNDARY_VAL_INDEX[loc]]
+
+    def get_first_phys_value(self, loc, axis='x'):
+        return self.val[axis][self.FIRST_PHYS_VAL_INDEX[loc]]
+
+    def update_ghost_node(self, time, ite, axis='x'):
+        # this implementation works only for 1 ghost point, ie HALF_STENCIL=1.
+        # use a list of opposite index to automatically access the other link.
+        assert(HALF_STENCIL == 1)
+        self.source.update(time)
+        for face, neigh in self.neighbours[axis].items():
+            ghost_val = self.boundary[face].compute(neigh, self.neighbour_faces[axis][face],
+                                                    self.get_boundary_value(face, axis),
+                                                    self.dx, self.material.thermal_conductivty)
+            self.setGhostValue(face, ghost_val, axis)
 
 
 class ConstantComponent(NodeBase):
 
     """Docstring for Air. """
 
+    RESOLUTION = 2
+    DELTA_X = 1.
+
     def __init__(self, name, y0):
         """TODO: to be defined. """
 
-        RESOLUTION = 2
-        DELTA_X = 1.
-
-        super().__init__(name, RESOLUTION, y0, DELTA_X)
+        super().__init__(name, self.RESOLUTION, y0, self.DELTA_X)
         self.name = name
         self.y = y0
         self.material = None
@@ -213,16 +237,18 @@ class Component(NodeBase):
         self.surface = surface
         self.volume = thickness * surface
         self.physics = physics
-        physics.y_mean_conservative = y0
         if source is None:
             self.source = Source(0., self.resolution)
         else:
             self.source = source
         self.boundary = boundary
-        self.ghost_index = GHOST_INDEX
-        self.boundary_val_index = BOUNDARY_VAL_INDEX
-        self.first_phys_val_index = FIRST_PHYS_VAL_INDEX
         self.outputs = outputs
+        x0 = 0.
+        self.x = {'x': np.linspace(x0 - HALF_STENCIL * self.dx,
+                             (self.resolution - 1 + HALF_STENCIL) * self.dx,
+                             num=self.resolution + 2 * HALF_STENCIL)}
+        self.val = {'x': np.zeros((self.resolution + 2 * HALF_STENCIL))}
+        self.val['x'][HALF_STENCIL:self.resolution + HALF_STENCIL] = y0
         logger.info(f'Component name is {self.name}')
         logger.info(f'Component discretization step (m) is {self.dx}')
         logger.info(f'Component diffusivity is {self.material.diffusivity}')
@@ -267,40 +293,52 @@ class Component(NodeBase):
             self.setGhostValue(face, ghost_val)
 
 
-class Room(Component):
+class Box(NodeBase):
 
     """Docstring for Room. 
     """
+
+    RESOLUTION = 1
 
     def __init__(
         self,
         name,
         material,
-        thickness,
+        delta_x,
+        delta_y,
+        delta_z,
         y0,
         physics,
-        boundary_type={'left': 'dirichlet', 'right': 'dirichlet'},
-        resolution=10,
-        dx=-1,
-        surface=1.0,
-        source=None,
-        observer=None,
+        outputs,
+        boundary={
+            'x': {'left': BoundaryCondition('dirichlet'),
+                  'right': BoundaryCondition('dirichlet')},
+            'y': {'left': BoundaryCondition('dirichlet'),
+                  'right': BoundaryCondition('dirichlet')},
+            'z': {'left': BoundaryCondition('dirichlet'),
+                  'right': BoundaryCondition('dirichlet')},
+        },
+        source=None
     ):
-        """TODO: to be defined. """
 
-        super().__init__(
-            name,
-            material,
-            thickness,
-            y0,
-            physics,
-            boundary_type,
-            resolution,
-            dx,
-            surface,
-            source,
-            observer,
-        )
+        # resolution is computed based on x axis
+        super().__init__(name, self.RESOLUTION, y0, delta_x, dx-1)
+        self.delta_x = delta_x
+        self.delta_y = delta_y
+        self.delta_z = delta_z
+        self.material = material
+        self.volume = delta_x * delta_y * delta_z
+        self.physics = physics
+        if source is None:
+            self.source = Source(0., self.RESOLUTION)
+        else:
+            self.source = source
+        self.boundary = boundary
+        self.ghost_index = GHOST_INDEX
+        self.boundary_val_index = BOUNDARY_VAL_INDEX
+        self.first_phys_val_index = FIRST_PHYS_VAL_INDEX
+        self.outputs = outputs
+
 
 def create_component(
     type,

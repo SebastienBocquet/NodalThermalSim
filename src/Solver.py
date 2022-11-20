@@ -58,7 +58,7 @@ class Post():
                     output.index_temporal = (int)(output.size/2)
             else:
                 output.size = 1
-                output.x = np.array([c.x[c.boundary_val_index[output.loc]]])
+                output.x = np.array([c.x[c.BOUNDARY_VAL_INDEX[output.loc]]])
         elif output.spatial_type == 'mean':
             output.size = 1
             # mean value is located at the middle of the component.
@@ -206,10 +206,10 @@ class Solver:
         for c in self.components:
             if c.resolution < 100:
                 message = 'all values'
-                phys_values = c.get_physics_y()
+                phys_values = c.get_physics_val()
             else:
                 message = 'first 100 values'
-                phys_values = c.get_physics_y()[:100]
+                phys_values = c.get_physics_val()[:100]
             print(f'Component physical values ({message}):', phys_values)
             print("")
 

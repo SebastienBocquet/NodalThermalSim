@@ -4,7 +4,7 @@ import copy
 import numpy as np
 from pytest import approx
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
-from Component import ConstantComponent, Material, BoundaryCondition, Component, Room, Source
+from Component import ConstantComponent, Material, BoundaryCondition, Component
 from Solver import Solver, Observer, Output
 from Physics import FiniteDifferenceTransport, FiniteVolume
 
@@ -56,7 +56,6 @@ bc_flux_right = BoundaryCondition('flux', -FLUX)
 wall_left = Component('wall_left', air1, THICKNESS, INIT_WALL_TEMPERATURE,
                       FiniteDifferenceTransport(),
                       [output_temperature, output_heat_flux],
-                      boundary={'left': bc_flux_left, 'right': bc_diri},
                       dx=DX, surface=YZ_SURFACE)
 wall_middle = Component('wall_middle', air2, THICKNESS, INIT_WALL_TEMPERATURE,
                 FiniteDifferenceTransport(),
@@ -65,11 +64,14 @@ wall_middle = Component('wall_middle', air2, THICKNESS, INIT_WALL_TEMPERATURE,
 wall_right = Component('wall_right', air3, THICKNESS, INIT_WALL_TEMPERATURE,
                        FiniteDifferenceTransport(),
                        [copy.deepcopy(output_temperature), copy.deepcopy(output_heat_flux)],
-                       boundary={'left': bc_diri, 'right': bc_flux_right},
                        dx=DX, surface=YZ_SURFACE)
 
 wall_left.set_neighbours({'left': None, 'right': wall_middle})
+wall_left.set_boundary({'left': bc_flux_left, 'right': bc_diri})
+
 wall_right.set_neighbours({'left': wall_middle, 'right': None})
+wall_right.set_boundary({'left': bc_diri, 'right': bc_flux_right})
+
 wall_middle.set_neighbours({'left': wall_left, 'right': wall_right})
 
 def test_wall_air_wall():

@@ -4,7 +4,7 @@ import copy
 import numpy as np
 from pytest import approx
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
-from Component import ConstantComponent, Material, BoundaryCondition, Component, Room
+from Component import ConstantComponent, Material, BoundaryCondition, Component
 from Solver import Solver, Observer, Output
 from Physics import FiniteDifferenceTransport, FiniteVolume
 
