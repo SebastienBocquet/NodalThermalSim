@@ -8,7 +8,6 @@ from Physics import OUTPUT_SIZE, T0, HALF_STENCIL, OutputComputer
 
 
 OUTPUT_FIG = pathlib.Path('Results')
-INTERMEDIATE_STATUS_PERIOD = 10000
 
 
 def get_time(ite, time_start, dt):
@@ -47,22 +46,21 @@ class Post():
         self.temporal_mean = 0.
         self.output_computer = OutputComputer()
 
-
     def set_size(self, c, nb_frames, output):
         if output.spatial_type == 'raw':
             if output.loc == 'all':
-                output.size = OUTPUT_SIZE(output.var_name, c.resolution)
-                output.x = c.get_physics_x()[:output.size]
+                output.size = OUTPUT_SIZE(output.var_name, c.get_grid().resolution)
+                output.x = c.get_grid().get_physics_x()[:output.size]
                 # default index for temporal value output ist the middle of the component.
                 if output.index_temporal == -1:
                     output.index_temporal = (int)(output.size/2)
             else:
                 output.size = 1
-                output.x = np.array([c.x[c.BOUNDARY_VAL_INDEX[output.loc]]])
+                output.x = np.array([c.get_grid().x[c.get_grid().BOUNDARY_VAL_INDEX[output.loc]]])
         elif output.spatial_type == 'mean':
             output.size = 1
             # mean value is located at the middle of the component.
-            output.x = np.array([c.get_physics_x()[(int)(c.resolution/2)]])
+            output.x = np.array([c.get_grid().get_physics_x()[(int)(c.get_grid().resolution/2)]])
         else:
             raise ValueError
         output.result = np.resize(output.result, (output.size, nb_frames))
@@ -168,14 +166,18 @@ class Observer:
             else:
                 loc_prefix = ''
                 loc = ''
-            plt.title(f"Component {c.name}\n {output.temporal_type} value of\n {output.spatial_type} spatial {output.var_name} {loc_prefix}{loc}")
+            plt.title(f"Component {c.name}\n {output.temporal_type} value of\n {output.spatial_type} spatial "
+                      f"{output.var_name} {loc_prefix}{loc}")
             # loc should be in meter or in percentage of thickness
-            plt.savefig(OUTPUT_FIG / f"Component_{c.name}_{output.temporal_type}_of_{output.spatial_type}_spatial_{output.var_name}_{loc_prefix}{loc}.png")
+            plt.savefig(OUTPUT_FIG /
+                        f"Component_{c.name}_{output.temporal_type}_of_{output.spatial_type}_spatial_{output.var_name}_{loc_prefix}{loc}.png")
             plt.close()
 
 class Solver:
 
     """Docstring for Solver. """
+
+    NB_STATUS = 10
 
     def __init__(self, component_list, dt, time_end, observer, time_start = 0.):
         """TODO: to be defined. """
@@ -204,27 +206,29 @@ class Solver:
         print("ite", ite)
         print("time", time)
         for c in self.components:
-            if c.resolution < 100:
+            if c.get_grid().resolution < 100:
                 message = 'all values'
-                phys_values = c.get_physics_val()
+                phys_values = c.get_grid().get_physics_val()
             else:
                 message = 'first 100 values'
-                phys_values = c.get_physics_val()[:100]
+                phys_values = c.get_grid().get_physics_val()[:100]
             print(f'Component physical values ({message}):', phys_values)
             print("")
 
     def run(self):
         nb_ite = int((self.time_end - self.time_start) / self.dt)
         print("nb_ite", nb_ite)
+        intermediate_status_period = max(1, (int)(nb_ite / self.NB_STATUS))
         for ite in range(0, nb_ite):
             time = get_time(ite, self.time_start, self.dt)
-            if ite % INTERMEDIATE_STATUS_PERIOD == 0:
+            if ite % intermediate_status_period == 0:
                 self.show_status(ite, time)
             for c in self.components:
                 c.update_ghost_node(time, ite)
                 if self.observer is not None:
                     if self.observer.is_updated(ite):
                         self.observer.update_components(c, self.post)
+            for c in self.components:
                 c.physics.advance_time(self.dt, c, ite)
             # TODO put is_updated in update function. put component loop in update function.
             if self.observer is not None:

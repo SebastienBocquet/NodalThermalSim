@@ -1,6 +1,5 @@
 import numpy as np
 
-
 HALF_STENCIL = 1
 T0 = 273.15
 
@@ -55,32 +54,32 @@ class OutputComputer(OutputComputerBase):
     def compute_var(self, c, output):
         if output.var_name == 'temperature':
             if output.loc == 'all':
-                return c.get_physics_val()
+                return c.get_grid().get_physics_val()
             else:
-                return np.array([c.get_boundary_value(output.loc)])
+                return np.array([c.get_grid().get_boundary_value(output.loc)])
         elif output.var_name == 'temperature_gradient':
             if output.loc == 'all':
-                return np.diff(c.get_physics_val()) / c.dx
+                return np.diff(c.get_grid().get_physics_val()) / c.get_grid().dx
             else:
-                return np.array([c.get_boundary_gradient(output.loc)])
+                return np.array([c.get_grid().get_boundary_gradient(output.loc)])
         elif output.var_name == 'heat_flux':
             if output.loc == 'all':
-                return c.material.thermal_conductivty * np.diff(c.get_physics_val() / c.dx)
+                return c.material.thermal_conductivity * np.diff(c.get_grid().get_physics_val() / c.get_grid().dx)
             else:
-                return np.array([c.material.thermal_conductivty * c.get_boundary_gradient(output.loc)])
-        elif output.var_name == 'HTC':
-            surface_temperature = 0.
-            ref_temperature = 0.
-            if output.loc == 'in':
-                # TODO introduce a get_ghost_value()[output.loc]
-                surface_temperature = 0.5 * (c.y[0] + c.get_physics_val()[0])
-                ref_temperature = c.get_physics_val()[0]
-            else:
-                # TODO introduce a get_ghost_value()[output.loc]
-                surface_temperature = 0.5 * (c.get_physics_val()[-1] + c.y[c.resolution + 1])
-                ref_temperature = c.get_physics_val()[-1]
-            htc = c.material.thermal_conductivty * c.get_boundary_gradient(output.loc) / (surface_temperature - ref_temperature)
-            return np.array([htc])
+                return np.array([c.material.thermal_conductivity * c.get_grid().get_boundary_gradient(output.loc)])
+        # elif output.var_name == 'HTC':
+        #     surface_temperature = 0.
+        #     ref_temperature = 0.
+        #     if output.loc == 'in':
+        #         # TODO introduce a get_ghost_value()[output.loc]
+        #         surface_temperature = 0.5 * (c.y[0] + c.get_grid().get_physics_val()[0])
+        #         ref_temperature = c.get_grid().get_physics_val()[0]
+        #     else:
+        #         # TODO introduce a get_ghost_value()[output.loc]
+        #         surface_temperature = 0.5 * (c.get_grid().get_physics_val()[-1] + c.y[c.resolution + 1])
+        #         ref_temperature = c.get_grid().get_physics_val()[-1]
+        #     htc = c.material.thermal_conductivity * c.get_boundary_gradient(output.loc) / (surface_temperature - ref_temperature)
+        #     return np.array([htc])
 
 
 class FiniteVolume:
@@ -91,23 +90,24 @@ class FiniteVolume:
     # y0, y, dx belong to Component. Pass them to FDTransport (or pass the entire Component)
     def __init__(self):
         """TODO: to be defined. """
-        self.y_mean_conservative = T0
-        self.k = 0.01
 
     def advance_time(self, dt, c, ite):
-        dydx = np.diff(c.y)
-        diffusion = c.material.diffusivity * (dydx[HALF_STENCIL:c.resolution + HALF_STENCIL] - dydx[:-HALF_STENCIL]) / c.dx**2
-        c.y[HALF_STENCIL:c.resolution + HALF_STENCIL] += dt * (diffusion[:] + c.source.y[:])
-        flux_in = c.material.diffusivity * c.get_boundary_gradient('left') * c.surface
-        flux_ext = c.material.diffusivity * c.get_boundary_gradient('right') * c.surface
-        temp_variation = (flux_in + flux_ext) / c.volume
-        self.y_mean_conservative += temp_variation * dt
-        y_mean = np.mean(c.get_physics_val())
-        c.y[HALF_STENCIL:c.resolution + HALF_STENCIL] -= self.k * (y_mean - self.y_mean_conservative)
+        # update central value
+        sum_heat_flux = 0.
+        for ax, grid in c.grid.items():
+            for face, neigh in grid.neighbours.items():
+                heat_flux = grid.get_boundary_heat_flux(face, ax)
+                sum_heat_flux += heat_flux * c.get_surface(ax)
+        temp_variation = sum_heat_flux / (c.material.density * c.material.cp * c.volume)
+        for ax, grid in c.grid.items():
+            grid.val[grid.FIRST_PHYS_VAL_INDEX['left']] += temp_variation * dt
 
-        if ite % 10000 == 0:
-            print('y mean by energy conservation', self.y_mean_conservative)
-            print('effective y mean', y_mean)
+        # update boundary values
+        for ax, grid in c.grid.items():
+            for face, neigh in grid.neighbours.items():
+                grid.val[grid.BOUNDARY_VAL_INDEX[face]] = \
+                    0.5 * (grid.get_ghost_value(face) +
+                           grid.val[grid.FIRST_PHYS_VAL_INDEX[face]])
 
 
 class FiniteDifferenceTransport:
@@ -122,7 +122,9 @@ class FiniteDifferenceTransport:
         self.y0 = T0
 
     def advance_time(self, dt, c, ite):
-        dydx = np.diff(c.val)
-        diffusion = c.material.thermal_conductivty * (dydx[HALF_STENCIL:c.resolution + HALF_STENCIL] - dydx[:-HALF_STENCIL]) / c.dx**2
-        c.val[HALF_STENCIL:c.resolution + HALF_STENCIL] += (1. / (c.material.density * c.material.cp)) * dt * (diffusion[:] + c.source.y[:])
+        dydx = np.diff(c.get_grid().val)
+        diffusion = c.material.thermal_conductivity * (dydx[HALF_STENCIL:c.get_grid().resolution + HALF_STENCIL] -
+                                                       dydx[:-HALF_STENCIL]) / c.get_grid().dx ** 2
+        c.get_grid().val[HALF_STENCIL:c.get_grid().resolution + HALF_STENCIL] += \
+            (1. / (c.material.density * c.material.cp)) * dt * (diffusion[:] + c.source.y[:])
 

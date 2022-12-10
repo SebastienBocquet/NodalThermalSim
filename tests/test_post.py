@@ -3,7 +3,7 @@ import os
 import numpy as np
 from pytest import approx
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
-from Component import ConstantComponent, Material, Component
+from Component import ConstantComponent, Material, Component1D
 from Solver import Solver, Observer, Output
 from Physics import FiniteDifferenceTransport
 
@@ -48,8 +48,9 @@ output_gradient_right = Output('temperature_gradient', loc='right')
 
 def test_observer():
     observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, DT)
-    room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature], resolution=RESOLUTION, surface=BOX_DEPTH*BOX_HEIGHT)
-    room.set_neighbours(neighbours)
+    room = Component1D('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature],
+                       resolution=RESOLUTION, surface=BOX_DEPTH * BOX_HEIGHT)
+    room.get_grid().set_neighbours(neighbours)
 
     # TODO check extreme setup. Especially the case of a single frame (typically the last one).
     observed_ite = []
@@ -73,8 +74,8 @@ def test_observer():
 def test_observer_ite0():
     observer = Observer(TIME_START, DT, TIME_START + DT, DT)
     # add a set_observer function to Component
-    room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature], resolution=RESOLUTION, surface=BOX_DEPTH*BOX_HEIGHT)
-    room.set_neighbours(neighbours)
+    room = Component1D('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature], resolution=RESOLUTION, surface=BOX_DEPTH * BOX_HEIGHT)
+    room.get_grid().set_neighbours(neighbours)
 
     # TODO check extreme setup. Especially the case of a single frame (typically the last one).
     expected_observed_ite = 0
@@ -92,8 +93,8 @@ def test_observer_ite0():
 def test_raw_output():
     # output is computed at ite0
     observer = Observer(TIME_START, DT, TIME_START + DT, DT)
-    room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature], resolution=RESOLUTION, surface=BOX_DEPTH*BOX_HEIGHT)
-    room.set_neighbours(neighbours)
+    room = Component1D('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature], resolution=RESOLUTION, surface=BOX_DEPTH * BOX_HEIGHT)
+    room.get_grid().set_neighbours(neighbours)
     component_to_solve_list = [room]
     # run one iteration.
     solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
@@ -110,8 +111,8 @@ def test_raw_output():
 def test_raw_output_temporal_loc():
     # output is computed at ite0
     observer = Observer(TIME_START, DT, TIME_START + DT, DT)
-    room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature_temporal_loc], resolution=RESOLUTION, surface=BOX_DEPTH*BOX_HEIGHT)
-    room.set_neighbours(neighbours)
+    room = Component1D('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature_temporal_loc], resolution=RESOLUTION, surface=BOX_DEPTH * BOX_HEIGHT)
+    room.get_grid().set_neighbours(neighbours)
     component_to_solve_list = [room]
     # run one iteration.
     solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
@@ -123,8 +124,8 @@ def test_raw_output_temporal_loc():
 def test_spatial_avg_output():
     # output is computed at ite0
     observer = Observer(TIME_START, DT, TIME_START + DT, DT)
-    room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature_space_avg], resolution=RESOLUTION, surface=BOX_DEPTH*BOX_HEIGHT)
-    room.set_neighbours(neighbours)
+    room = Component1D('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_temperature_space_avg], resolution=RESOLUTION, surface=BOX_DEPTH * BOX_HEIGHT)
+    room.get_grid().set_neighbours(neighbours)
     component_to_solve_list = [room]
     # run one iteration
     solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
@@ -139,8 +140,8 @@ def test_spatial_avg_output():
 def test_gradient_output():
     # output is computed at ite0
     observer = Observer(TIME_START, DT, TIME_START + DT, DT)
-    room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_gradient], resolution=RESOLUTION, surface=BOX_DEPTH*BOX_HEIGHT)
-    room.set_neighbours(neighbours)
+    room = Component1D('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_gradient], resolution=RESOLUTION, surface=BOX_DEPTH * BOX_HEIGHT)
+    room.get_grid().set_neighbours(neighbours)
     component_to_solve_list = [room]
     # run one iteration.
     solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
@@ -153,8 +154,8 @@ def test_gradient_output():
 def test_boundary_output():
     # output is computed at ite0
     observer = Observer(TIME_START, DT, TIME_START + DT, DT)
-    room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_gradient_left], resolution=RESOLUTION, surface=BOX_DEPTH*BOX_HEIGHT)
-    room.set_neighbours(neighbours)
+    room = Component1D('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(), [output_gradient_left], resolution=RESOLUTION, surface=BOX_DEPTH * BOX_HEIGHT)
+    room.get_grid().set_neighbours(neighbours)
     component_to_solve_list = [room]
     # run one iteration
     solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
@@ -170,10 +171,10 @@ def test_boundary_output():
 def test_two_outputs():
     # output is computed at ite0
     observer = Observer(TIME_START, DT, TIME_START + DT, DT)
-    room = Component('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(),
-                     [output_temperature_space_avg, output_gradient], resolution=RESOLUTION,
-                     surface=BOX_DEPTH*BOX_HEIGHT)
-    room.set_neighbours(neighbours)
+    room = Component1D('room', air, BOX_WIDTH, INIT_AIR_TEMPERATURE, FiniteDifferenceTransport(),
+                       [output_temperature_space_avg, output_gradient], resolution=RESOLUTION,
+                       surface=BOX_DEPTH*BOX_HEIGHT)
+    room.get_grid().set_neighbours(neighbours)
     component_to_solve_list = [room]
     # run one iteration
     solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
