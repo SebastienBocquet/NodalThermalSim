@@ -1,6 +1,7 @@
 import sys
 import os
 import copy
+import logging
 import numpy as np
 from pytest import approx
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -49,7 +50,7 @@ RESOLUTION = 10
 DT = 0.9 * DX**2 / (2 * (K_BRICK_3 / (DENSITY_BRICK * CP_BRICK)))
 
 TIME_START = 0.
-TIME_END = 12 * 3600
+TIME_END = 48 * 3600
 NB_FRAMES = 5
 OBSERVER_PERIOD = (int)(TIME_END / NB_FRAMES)
 
@@ -93,13 +94,17 @@ def test_wall_air_wall():
     thermal_conductivities = [K_BRICK, K_BRICK_2, K_BRICK_3]
     for i in range(len(component_to_solve_list)):
         # check conservation of heat flux through all layers
-        assert np.allclose(component_to_solve_list[i].outputs[1].result[:,NB_FRAMES-1], expected_flux)
+        assert np.allclose(component_to_solve_list[i].outputs[1].result[:,NB_FRAMES-1], expected_flux, rtol=0.01)
         # check that temperature profile is linear
         # and its slope corresponds to the thermal resistance analogy
         resistance = THICKNESS / (YZ_SURFACE * thermal_conductivities[i])
         expected_grad_temp = np.ones((RESOLUTION)) * resistance * (FLUX * YZ_SURFACE) / THICKNESS
         grad_temp = np.diff(component_to_solve_list[i].outputs[0].result[:, NB_FRAMES - 1]) / DX
-        assert np.allclose(grad_temp, expected_grad_temp)
+        assert np.allclose(grad_temp, expected_grad_temp, rtol=0.01)
+    # check continuity of temperature profile
+    tp_wall_left_bnd_right = wall_left.get_grid().get_boundary_value('right')
+    tp_wall_middle_bnd_left = wall_middle.get_grid().get_boundary_value('left')
+    assert tp_wall_middle_bnd_left == approx(tp_wall_left_bnd_right)
 
 def test_show_tree():
     component_to_solve_list = [wall_left, wall_middle, wall_right]

@@ -88,7 +88,7 @@ class NodeBase(ABC):
                 Node(n.name, parent=node_)
 
     @abstractmethod
-    def get_grid(self, ax='x'):
+    def get_grid(self, ax='x') -> GridBase:
         ...
 
 
@@ -173,10 +173,10 @@ class Component1D(NodeBase):
         assert(HALF_STENCIL == 1)
         self.source.update(time)
         for face, neigh in self.get_grid(ax).neighbours.items():
-            ghost_val = self.get_grid(ax).boundary[face].compute(face, neigh, self.get_grid(ax).neighbour_faces[face],
+            ghost_vals = self.get_grid(ax).boundary[face].compute(face, neigh, self.get_grid(ax).neighbour_faces[face],
                                                     self.get_grid(ax).get_boundary_value(face),
                                                     self.get_grid(ax).dx, self.material.thermal_conductivity)
-            self.get_grid(ax).setGhostValue(face, ghost_val)
+            self.get_grid(ax).setGhostValue(face, *ghost_vals)
 
 
 class Box(NodeBase):
@@ -250,10 +250,10 @@ class Box(NodeBase):
             # this implementation works only for 1 ghost point, ie HALF_STENCIL=1.
             # use a list of opposite index to automatically access the other link.
             for face, neigh in grid.neighbours.items():
-                ghost_val = grid.boundary[face].compute(face, neigh, grid.neighbour_faces[face],
+                ghost_vals = grid.boundary[face].compute(face, neigh, grid.neighbour_faces[face],
                                                         grid.get_boundary_value(face),
                                                         grid.dx, self.material.thermal_conductivity)
-                grid.setGhostValue(face, ghost_val)
+                grid.setGhostValue(face, *ghost_vals)
 
 
 def create_component(

@@ -21,7 +21,7 @@ class BoundaryConditionFlux:
         if self.type == 'heatFlux':
             gradient = self.flux / thermal_conductivity
             ghost_val = boundary_value - dx * gradient
-            return ghost_val
+            return ghost_val,
         else:
             raise ValueError
 
@@ -35,19 +35,21 @@ class BoundaryConditionDirichlet:
             # fill ghost node with the neighbour first physical node value, corrected to impose
             # a gradient that ensures heat flux conservation through component interface.
             ghost_val = neigh.get_grid().get_boundary_value(neighbour_face)
+            ghost_target = 0.
             if self.type == 'conservative':
                 # TODO log an info that conservative treatment is deactivated
                 if neigh.material is not None:
-                    gradient_neighbour = (neigh.get_grid().get_ghost_value(neighbour_face) -
-                                          neigh.get_grid().get_boundary_value(neighbour_face)) / neigh.get_grid().dx
+                    gradient_neighbour = (neigh.get_grid().get_boundary_value(neighbour_face) -
+                                          neigh.get_grid().get_first_phys_value(neighbour_face)) / neigh.get_grid().dx
                     flux_neighbour = neigh.material.thermal_conductivity * gradient_neighbour
                     flux_target = -flux_neighbour
                     gradient = flux_target / thermal_conductivity
-                    ghost_target = boundary_value + dx * gradient
-                    ghost_val = ghost_target
-                return ghost_val
+                    ghost_target = boundary_value - dx * gradient
+                    error = ghost_val - ghost_target
+                    ghost_val += 1. * error
+                return ghost_val, ghost_target
             elif self.type == 'non_conservative':
-                return ghost_val
+                return ghost_val,
             else:
                 raise ValueError
 
@@ -84,8 +86,9 @@ class GridBase(ABC):
         self.val = np.zeros((self.resolution + 2 * HALF_STENCIL))
         self.val[HALF_STENCIL:self.resolution + HALF_STENCIL] = y0
         self.boundary = {'left': BoundaryConditionDirichlet(), 'right': BoundaryConditionDirichlet()}
-        self.neighbours = {'left': None, 'right':None}
+        self.neighbours = {'left': None, 'right': None}
         self.neighbour_faces = {'left': 'right', 'right': 'left'}
+        self.ghost_target_val = {'left': 0., 'right': 0.}
 
     def set_boundary(self, boundary):
         self.boundary = boundary
@@ -100,8 +103,9 @@ class GridBase(ABC):
     def get_boundary_gradient(self, loc):
         return
 
-    def setGhostValue(self, face, val):
+    def setGhostValue(self, face, val, target=0.):
         self.val[self.GHOST_INDEX[face]] = val
+        self.ghost_target_val[face] = target
 
     def get_ghost_value(self, loc):
        return self.val[self.GHOST_INDEX[loc]]

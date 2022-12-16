@@ -1,13 +1,19 @@
 import copy
+import logging
+import mlflow
+from mlflow import log_metric, log_param, log_artifacts
 from anytree import Node, RenderTree
 import matplotlib.pyplot as plt
 import numpy as np
-import pathlib
+from pathlib import Path
 import pandas as pd
 from Physics import OUTPUT_SIZE, T0, HALF_STENCIL, OutputComputer
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-OUTPUT_FIG = pathlib.Path('Results')
+DEFAULT_WKDIR = Path('.')
+OUTPUT_FIG_DIR = 'Results'
 
 
 def get_time(ite, time_start, dt):
@@ -118,7 +124,6 @@ class Observer:
         # self.ts = pd.Series(data, range(self.nb_frames))
         self.update_count = 0
         self.temporal_axis = []
-        OUTPUT_FIG.mkdir(parents=True, exist_ok=True)
 
     def set_output_container(self, post, c):
         for o in c.outputs:
@@ -139,7 +144,7 @@ class Observer:
     def is_updated(self, ite):
         return ite in self.ite_extraction
 
-    def plot(self, c):
+    def plot(self, c, output_dir):
         for io, output in enumerate(c.outputs):
             fig, ax = plt.subplots()
             for i in range(self.nb_frames):
@@ -147,10 +152,10 @@ class Observer:
                 ax.plot(output.x, output.result[:, i], '-o', label="t=%ds" % time, linewidth=2.0)
             ax.legend()
             plt.title(f"Component {c.name}\n raw value of {output.var_name}")
-            plt.savefig(OUTPUT_FIG / f"Component_{c.name}_raw_{output.var_name}.png")
+            plt.savefig(output_dir / f"Component_{c.name}_raw_{output.var_name}.png")
             plt.close()
 
-    def plot_temporal(self, c):
+    def plot_temporal(self, c, output_dir):
         for io, output in enumerate(c.outputs):
             fig, ax = plt.subplots()
             ax.plot(self.temporal_axis, np.array(output.temporal_result), '-o', label=f"{output.var_name}", linewidth=2.0)
@@ -169,7 +174,7 @@ class Observer:
             plt.title(f"Component {c.name}\n {output.temporal_type} value of\n {output.spatial_type} spatial "
                       f"{output.var_name} {loc_prefix}{loc}")
             # loc should be in meter or in percentage of thickness
-            plt.savefig(OUTPUT_FIG /
+            plt.savefig(output_dir /
                         f"Component_{c.name}_{output.temporal_type}_of_{output.spatial_type}_spatial_{output.var_name}_{loc_prefix}{loc}.png")
             plt.close()
 
@@ -180,12 +185,12 @@ class Solver:
     NB_STATUS = 10
 
     def __init__(self, component_list, dt, time_end, observer, time_start = 0.):
-        """TODO: to be defined. """
         self.components = component_list
         # TODO: pass this dt to the equation time advance. Remove dt attribute in equation.
         self.dt = dt
         self.time_start = time_start
         self.time_end = time_end
+        self.nb_ite = -1
         self.post = Post()
         self.observer = observer
         self.node = Node('')
@@ -203,9 +208,11 @@ class Solver:
             print("%s%s" % (pre, node_.name))
 
     def show_status(self, ite, time):
-        print("ite", ite)
-        print("time", time)
+        print(f"Current ite {ite} on {self.nb_ite}")
+        print(f"Current time {time} on {self.time_end - self.time_start}")
         for c in self.components:
+            logger.log(logging.INFO, f'Name {c.name}')
+            print(f'Name {c.name}')
             if c.get_grid().resolution < 100:
                 message = 'all values'
                 phys_values = c.get_grid().get_physics_val()
@@ -213,14 +220,23 @@ class Solver:
                 message = 'first 100 values'
                 phys_values = c.get_grid().get_physics_val()[:100]
             print(f'Component physical values ({message}):', phys_values)
-            print("")
+            print(f"Actual ghost values: left={c.get_grid().get_ghost_value('left')}, "
+                  f"right={c.get_grid().get_ghost_value('right')}")
+            print(f"Target ghost values: left={c.get_grid().ghost_target_val['left']}, "
+                  f"right={c.get_grid().ghost_target_val['right']}")
+            print("--")
+        print('')
 
     def run(self):
-        nb_ite = int((self.time_end - self.time_start) / self.dt)
-        print("nb_ite", nb_ite)
-        intermediate_status_period = max(1, (int)(nb_ite / self.NB_STATUS))
-        for ite in range(0, nb_ite):
+        self.nb_ite = int((self.time_end - self.time_start) / self.dt)
+        print("nb_ite", self.nb_ite)
+        intermediate_status_period = max(1, (int)(self.nb_ite / self.NB_STATUS))
+        # mlflow.log_param('nb_ite', self.nb_ite)
+        # mlflow.log_param('timestep', self.dt)
+        for ite in range(0, self.nb_ite):
             time = get_time(ite, self.time_start, self.dt)
+            # mlflow.log_metric('iteration', ite)
+            # mlflow.log_metric('time', time)
             if ite % intermediate_status_period == 0:
                 self.show_status(ite, time)
             for c in self.components:
@@ -236,8 +252,11 @@ class Solver:
                     self.observer.update(ite, self.post)
 
     # TODO add a show and save args
-    def visualize(self, ):
+    def visualize(self, output_root_dir=DEFAULT_WKDIR):
+        output_dir = output_root_dir / OUTPUT_FIG_DIR
+        output_dir.mkdir(parents=True, exist_ok=True)
         for c in self.components:
             if self.observer is not None:
-                self.observer.plot(c)
-                self.observer.plot_temporal(c)
+                self.observer.plot(c, output_dir)
+                self.observer.plot_temporal(c, output_dir)
+        # mlflow.log_artifacts(output_dir)

@@ -55,10 +55,8 @@ wall_left = Component1D('wall_left', air, THICKNESS, INIT_WALL_TEMPERATURE, Fini
 wall_right = Component1D('wall_right', air, THICKNESS, INIT_WALL_TEMPERATURE, FiniteDifferenceTransport(),
                          [output_temperature_wall_right], resolution=RESOLUTION, surface=DELTA_Y * DELTA_Z)
 
-bc_diri = BoundaryConditionDirichlet()
+bc_diri = BoundaryConditionDirichlet(type='non_conservative')
 bc_adia = BoundaryConditionFlux()
-bc_flux_left = BoundaryConditionFlux(flux=FLUX)
-bc_flux_right = BoundaryConditionFlux(flux=-FLUX)
 
 
 def test_box_bc_value():
