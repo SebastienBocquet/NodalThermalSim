@@ -10,6 +10,11 @@ from Solver import Solver, Observer, Output
 from Physics import FiniteDifferenceTransport
 from Grid import BoundaryConditionDirichlet, BoundaryConditionFlux
 
+logging.basicConfig(level=logging.INFO)
+
+SOLVER_TYPE = 'implicit'
+IMPLICIT_DT_FACTOR = 5
+
 T0 = 273.15 + 25.
 INIT_WALL_TEMPERATURE = T0
 EXTERIOR_TEMPERATURE = 273.15 + 33.
@@ -46,8 +51,9 @@ ROOM_VOLUME = ROOM_WIDTH * ROOM_HEIGHT * ROOM_DEPTH
 YZ_SURFACE = ROOM_HEIGHT * ROOM_DEPTH
 DX = THICKNESS / RESOLUTION
 RESOLUTION = 10
-# DT = 0.9 * DX**2 / (2 * (K_AIR_3 / (DENSITY_AIR * CP_AIR)))
 DT = 0.9 * DX**2 / (2 * (K_BRICK_3 / (DENSITY_BRICK * CP_BRICK)))
+if SOLVER_TYPE == 'implicit':
+    DT *= IMPLICIT_DT_FACTOR
 
 TIME_START = 0.
 TIME_END = 48 * 3600
@@ -59,7 +65,7 @@ output_heat_flux = Output('heat_flux', spatial_type='raw')
 
 observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, DT)
 
-bc_diri = BoundaryConditionDirichlet()
+bc_diri = BoundaryConditionDirichlet(type='conservative')
 bc_adia = BoundaryConditionFlux()
 bc_flux_left = BoundaryConditionFlux(flux=FLUX)
 bc_flux_right = BoundaryConditionFlux(flux=-FLUX)
@@ -87,7 +93,7 @@ wall_middle.get_grid().set_neighbours({'left': wall_left, 'right': wall_right})
 def test_wall_air_wall():
     # check that the 'electric resistance' analogy is respected.
     component_to_solve_list = [wall_left, wall_middle, wall_right]
-    solver = Solver(component_to_solve_list, DT, TIME_END, observer)
+    solver = Solver(component_to_solve_list, DT, TIME_END, observer, solver_type=SOLVER_TYPE)
     solver.run()
     solver.visualize()
     expected_flux = np.ones((RESOLUTION)) * FLUX

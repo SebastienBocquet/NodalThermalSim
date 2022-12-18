@@ -5,53 +5,13 @@ logger = logging.getLogger(__name__)
 from abc import ABC, abstractmethod
 import numpy as np
 from Solver import HALF_STENCIL
+from Physics import BoundaryConditionFlux, BoundaryConditionDirichlet
 
 
 X = 0
 Y = 1
 Z = 2
 
-class BoundaryConditionFlux:
-
-    def __init__(self, type_='heatFlux', flux=0.):
-        self.type = type_
-        self.flux = flux
-
-    def compute(self, face, neigh, neighbour_face, boundary_value, dx, thermal_conductivity):
-        if self.type == 'heatFlux':
-            gradient = self.flux / thermal_conductivity
-            ghost_val = boundary_value - dx * gradient
-            return ghost_val,
-        else:
-            raise ValueError
-
-
-class BoundaryConditionDirichlet:
-
-    def __init__(self, type='conservative'):
-        self.type = type
-
-    def compute(self, face, neigh, neighbour_face, boundary_value, dx, thermal_conductivity):
-            # fill ghost node with the neighbour first physical node value, corrected to impose
-            # a gradient that ensures heat flux conservation through component interface.
-            ghost_val = neigh.get_grid().get_boundary_value(neighbour_face)
-            ghost_target = 0.
-            if self.type == 'conservative':
-                # TODO log an info that conservative treatment is deactivated
-                if neigh.material is not None:
-                    gradient_neighbour = (neigh.get_grid().get_boundary_value(neighbour_face) -
-                                          neigh.get_grid().get_first_phys_value(neighbour_face)) / neigh.get_grid().dx
-                    flux_neighbour = neigh.material.thermal_conductivity * gradient_neighbour
-                    flux_target = -flux_neighbour
-                    gradient = flux_target / thermal_conductivity
-                    ghost_target = boundary_value - dx * gradient
-                    error = ghost_val - ghost_target
-                    ghost_val += 1. * error
-                return ghost_val, ghost_target
-            elif self.type == 'non_conservative':
-                return ghost_val,
-            else:
-                raise ValueError
 
 
 class GridBase(ABC):

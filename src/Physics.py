@@ -1,4 +1,8 @@
 import numpy as np
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 HALF_STENCIL = 1
 T0 = 273.15
@@ -82,16 +86,58 @@ class OutputComputer(OutputComputerBase):
         #     return np.array([htc])
 
 
+class BoundaryConditionFlux:
+
+    def __init__(self, type_='heatFlux', flux=0.):
+        self.type = type_
+        self.flux = flux
+
+    def compute(self, face, neigh, neighbour_face, boundary_value, dx, thermal_conductivity):
+        if self.type == 'heatFlux':
+            gradient = self.flux / thermal_conductivity
+            ghost_val = boundary_value - dx * gradient
+            return ghost_val,
+        else:
+            raise ValueError
+
+
+class BoundaryConditionDirichlet:
+
+    def __init__(self, type='conservative'):
+        self.type = type
+
+    def compute(self, face, neigh, neighbour_face, boundary_value, dx, thermal_conductivity):
+            # fill ghost node with the neighbour first physical node value, corrected to impose
+            # a gradient that ensures heat flux conservation through component interface.
+            ghost_val = neigh.get_grid().get_boundary_value(neighbour_face)
+            ghost_target = 0.
+            if self.type == 'conservative':
+                # TODO log an info that conservative treatment is deactivated
+                if neigh.material is not None:
+                    gradient_neighbour = (neigh.get_grid().get_boundary_value(neighbour_face) -
+                                          neigh.get_grid().get_first_phys_value(neighbour_face)) / neigh.get_grid().dx
+                    flux_neighbour = neigh.material.thermal_conductivity * gradient_neighbour
+                    flux_target = -flux_neighbour
+                    gradient = flux_target / thermal_conductivity
+                    ghost_target = boundary_value - dx * gradient
+                    error = ghost_target - ghost_val
+                    ghost_val -= 1. * error
+                return ghost_val, ghost_target
+            elif self.type == 'non_conservative':
+                return ghost_val,
+            else:
+                raise ValueError
+
+
 class FiniteVolume:
 
     """Docstring for FiniteVolume.
     """
 
-    # y0, y, dx belong to Component. Pass them to FDTransport (or pass the entire Component)
     def __init__(self):
         """TODO: to be defined. """
 
-    def advance_time(self, dt, c, ite):
+    def advance_time(self, dt, c, ite, solver_type):
         # update central value
         sum_heat_flux = 0.
         for ax, grid in c.grid.items():
@@ -115,16 +161,55 @@ class FiniteDifferenceTransport:
     """Docstring for FiniteDifferenceTransport. 
     """
 
-    # y0, y, dx belong to Component. Pass them to FDTransport (or pass the entire Component)
     def __init__(self):
         """TODO: to be defined. """
 
-        self.y0 = T0
+        self.Ainv = None
 
-    def advance_time(self, dt, c, ite):
-        dydx = np.diff(c.get_grid().val)
-        diffusion = c.material.thermal_conductivity * (dydx[HALF_STENCIL:c.get_grid().resolution + HALF_STENCIL] -
-                                                       dydx[:-HALF_STENCIL]) / c.get_grid().dx ** 2
-        c.get_grid().val[HALF_STENCIL:c.get_grid().resolution + HALF_STENCIL] += \
-            (1. / (c.material.density * c.material.cp)) * dt * (diffusion[:] + c.source.y[:])
+    def advance_time(self, dt, c, ite, solver_type):
+        # TODO set dt and solver_type at beginning of solver
+        if solver_type == 'implicit':
+            r = dt * c.material.diffusivity / c.get_grid().dx**2
+            if ite == 0:
+                N = c.get_grid().resolution
+                A = np.zeros((N, N))
+                for i in range(0, N):
+                    A[i, i] = 1 + 2 * r
+                    # for flux imposed BC
+                    if type(c.get_grid().boundary['left']) == BoundaryConditionFlux:
+                        A[0, 0] = 1 + r
+                    if type(c.get_grid().boundary['right']) == BoundaryConditionFlux:
+                        A[-1, -1] = 1 + r
+
+                for i in range(0, N - 1):
+                    A[i + 1, i] = -r
+                    A[i, i + 1] = -r
+
+                self.Ainv = np.linalg.inv(A)
+                # logger.log(logging.INFO, f"A: {A}")
+                # print('A', A)
+                # print('inv A', self.Ainv)
+            val_ = c.get_grid().val
+            w = val_[HALF_STENCIL:c.get_grid().resolution + HALF_STENCIL]
+            # for flux imposed BC
+            if type(c.get_grid().boundary['left']) == BoundaryConditionFlux:
+                k_left = -c.get_grid().dx * c.get_grid().boundary['left'].flux / c.material.thermal_conductivity
+                w[0] += r * k_left
+            else:
+                w[0] += r * val_[0]
+            if type(c.get_grid().boundary['right']) == BoundaryConditionFlux:
+                k_right = -c.get_grid().dx * c.get_grid().boundary['right'].flux / c.material.thermal_conductivity
+                w[-1] += r * k_right
+            else:
+                w[-1] += r * val_[-1]
+            # print('rhs', w)
+            val_[HALF_STENCIL:c.get_grid().resolution + HALF_STENCIL] = np.dot(self.Ainv, w)
+            # print('updated vals', val_[HALF_STENCIL:c.get_grid().resolution + HALF_STENCIL])
+        elif solver_type == 'explicit':
+            dydx = np.diff(c.get_grid().val)
+            diffusion = c.material.diffusivity * (dydx[HALF_STENCIL:c.get_grid().resolution + HALF_STENCIL] -
+                                                           dydx[:-HALF_STENCIL]) / c.get_grid().dx ** 2
+            c.get_grid().val[HALF_STENCIL:c.get_grid().resolution + HALF_STENCIL] += dt * (diffusion[:] + c.source.y[:])
+        else:
+            raise TypeError
 

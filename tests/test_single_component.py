@@ -9,6 +9,9 @@ from Solver import Solver, Observer, Output
 from Physics import FiniteDifferenceTransport
 from Grid import BoundaryConditionDirichlet, BoundaryConditionFlux
 
+SOLVER_TYPE = 'implicit'
+IMPLICIT_DT_FACTOR = 20
+
 T0 = 273.15 + 25.
 EXTERIOR_TEMPERATURE = 273.15 + 33.
 INTERIOR_TEMPERATURE = T0
@@ -25,6 +28,8 @@ THICKNESS = 0.14
 DX = THICKNESS / (RESOLUTION - 1)
 RESOLUTION = 10
 DT = 0.9 * DX**2 / (2 * (K_BRICK / (DENSITY_BRICK * CP_BRICK)))
+if SOLVER_TYPE == 'implicit':
+    DT *= IMPLICIT_DT_FACTOR
 
 TIME_START = 0.
 TIME_END = 48 * 3600.
@@ -46,7 +51,6 @@ expected_gradient = (EXTERIOR_TEMPERATURE - INTERIOR_TEMPERATURE) / (THICKNESS +
 
 bc_diri = BoundaryConditionDirichlet()
 bc_adia = BoundaryConditionFlux()
-bc_flux = BoundaryConditionFlux(flux=FLUX)
 wall_adiabatic = Component1D('wall_adiabatic', brick, THICKNESS, INIT_WALL_TEMPERATURE,
                              FiniteDifferenceTransport(), [output_temperature],
                              resolution=RESOLUTION, surface=1.)
@@ -58,8 +62,11 @@ wall_flux = Component1D('wall_flux', brick, THICKNESS, INIT_WALL_TEMPERATURE,
                         FiniteDifferenceTransport(), [output_temperature],
                         resolution=RESOLUTION, surface=1.)
 wall_flux.get_grid().set_neighbours(neighbours, neighbour_faces)
-wall_flux.get_grid().set_boundary({'left': bc_diri, 'right': bc_flux})
+wall_flux.get_grid().set_boundary({'left': bc_diri, 'right': BoundaryConditionFlux(flux=FLUX)})
 wall_flux_2 = copy.deepcopy(wall_flux)
+wall_flux_2.get_grid().set_boundary({'left': BoundaryConditionFlux(flux=-FLUX), 'right': BoundaryConditionFlux(flux=FLUX)})
+wall_flux_3 = copy.deepcopy(wall_flux)
+wall_flux_3.get_grid().set_boundary({'left': bc_diri, 'right': BoundaryConditionFlux(flux=FLUX)})
 
 def test_constant_component_bc():
     assert air_exterior.get_grid().get_boundary_value('left') == approx(EXTERIOR_TEMPERATURE)
@@ -77,7 +84,7 @@ def test_solver_single_component():
     observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, DT)
     solver = Solver(component_to_solve_list, DT, TIME_END, observer)
     solver.run()
-    solver.visualize()
+    # solver.visualize()
     # test solution against linear profile between exterior and interior temperature. Ghost nodes are included.
     expected_y = np.linspace(INTERIOR_TEMPERATURE, EXTERIOR_TEMPERATURE, RESOLUTION+2)
     assert wall.get_grid().val == approx(expected_y)
@@ -95,23 +102,33 @@ def test_adiabatic_boundary_condition_at_convergence():
     solver.run()
     # Temperature on adiabatic side should reach the imposed temperature on right side.
     assert wall_adiabatic_2.get_grid().get_boundary_value('left') == approx(EXTERIOR_TEMPERATURE, rel=0.01)
-    solver.visualize()
+    # solver.visualize()
 
 def test_flux_boundary_condition():
     wall_flux.update_ghost_node(0., 0)
     assert wall_flux.material.thermal_conductivity * wall_flux.get_grid().get_boundary_gradient('right') == approx(-FLUX)
     assert wall_flux.get_grid().get_boundary_heat_flux('right') == approx(-FLUX)
 
-def test_flux_boundary_condition_at_convergence():
+def test_flux_left_flux_right_at_convergence():
     observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, DT)
-    solver = Solver([wall_flux_2], DT, TIME_END, observer)
+    solver = Solver([wall_flux_2], DT, TIME_END, observer, solver_type=SOLVER_TYPE)
     solver.run()
     # expected temperature profile is linear with a slope equal to the imposed flux / lambda.
     expected_gradient = -FLUX / K_BRICK
-    expected_temperature_right = INTERIOR_TEMPERATURE + expected_gradient * (THICKNESS + 2 * DX)
-    expected_y = np.linspace(INTERIOR_TEMPERATURE, expected_temperature_right, RESOLUTION + 2)
-    assert np.allclose(wall_flux_2.get_grid().val, expected_y, rtol=1e-3)
     assert wall_flux_2.get_grid().get_boundary_gradient('left') == approx(-expected_gradient, rel=1e-3)
     assert wall_flux_2.get_grid().get_boundary_gradient('right') == approx(expected_gradient, rel=1e-3)
-    solver.visualize()
+    # solver.visualize()
 
+def test_diri_left_flux_right_at_convergence():
+    observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, DT)
+    solver = Solver([wall_flux_3], DT, TIME_END, observer, solver_type=SOLVER_TYPE)
+    solver.run()
+    # expected temperature profile is linear with a slope equal to the imposed flux / lambda.
+    # left temperature should be equal to INTERIOR_TEMPERATURE since a Dirichlet BC is imposed.
+    expected_gradient = -FLUX / K_BRICK
+    expected_temperature_right = INTERIOR_TEMPERATURE + expected_gradient * (THICKNESS + 2 * DX)
+    expected_y = np.linspace(INTERIOR_TEMPERATURE, expected_temperature_right, RESOLUTION + 2)
+    assert np.allclose(wall_flux_3.get_grid().val, expected_y, rtol=1e-3)
+    assert wall_flux_3.get_grid().get_boundary_gradient('left') == approx(-expected_gradient, rel=1e-3)
+    assert wall_flux_3.get_grid().get_boundary_gradient('right') == approx(expected_gradient, rel=1e-3)
+    # solver.visualize()

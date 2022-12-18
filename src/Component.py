@@ -138,7 +138,7 @@ class Component1D(NodeBase):
         thickness,
         y0,
         physics,
-        outputs,
+        outputs = None,
         resolution=10,
         dx=-1,
         surface=1.0,
@@ -160,6 +160,9 @@ class Component1D(NodeBase):
     def check_stability(self, dt):
         if (dt / self.get_grid().dx ** 2) >= 1.0 / (2 * self.material.diffusivity):
             raise ValueError
+
+    def set_outputs(self, outputs):
+        self.outputs = outputs
 
     def check(self):
         assert GridBase.BOUNDARY_VAL_INDEX.keys() == GridBase.GHOST_INDEX.keys()

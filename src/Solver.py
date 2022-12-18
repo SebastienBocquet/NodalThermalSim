@@ -184,7 +184,8 @@ class Solver:
 
     NB_STATUS = 10
 
-    def __init__(self, component_list, dt, time_end, observer, time_start = 0.):
+    def __init__(self, component_list, dt, time_end, observer, time_start = 0., solver_type='implicit'):
+        self.solver_type = solver_type
         self.components = component_list
         # TODO: pass this dt to the equation time advance. Remove dt attribute in equation.
         self.dt = dt
@@ -194,10 +195,10 @@ class Solver:
         self.post = Post()
         self.observer = observer
         self.node = Node('')
-        print('Solver dt:', self.dt)
         for c in self.components:
             c.check()
-            c.check_stability(dt)
+            if self.solver_type == 'explicit':
+                c.check_stability(dt)
             self.observer.set_output_container(self.post, c)
             c.add_to_tree(self.node)
 
@@ -229,6 +230,7 @@ class Solver:
 
     def run(self):
         self.nb_ite = int((self.time_end - self.time_start) / self.dt)
+        print('Solver dt:', self.dt)
         print("nb_ite", self.nb_ite)
         intermediate_status_period = max(1, (int)(self.nb_ite / self.NB_STATUS))
         # mlflow.log_param('nb_ite', self.nb_ite)
@@ -245,7 +247,7 @@ class Solver:
                     if self.observer.is_updated(ite):
                         self.observer.update_components(c, self.post)
             for c in self.components:
-                c.physics.advance_time(self.dt, c, ite)
+                c.physics.advance_time(self.dt, c, ite, self.solver_type)
             # TODO put is_updated in update function. put component loop in update function.
             if self.observer is not None:
                 if self.observer.is_updated(ite):
