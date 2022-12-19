@@ -88,12 +88,21 @@ class OutputComputer(OutputComputerBase):
 
 class BoundaryConditionFlux:
 
-    def __init__(self, type_='heatFlux', flux=0.):
-        self.type = type_
+    def __init__(self, type='heatFlux', flux=0., htc=0.):
+        self.type = type
         self.flux = flux
+        self.htc = htc
 
     def compute(self, face, neigh, neighbour_face, boundary_value, dx, thermal_conductivity):
         if self.type == 'heatFlux':
+            gradient = self.flux / thermal_conductivity
+            ghost_val = boundary_value - dx * gradient
+            return ghost_val,
+        elif self.type == 'htc':
+            neigh_boundary_value = neigh.get_grid().get_boundary_value(neighbour_face)
+            delta = neigh_boundary_value - boundary_value
+            print('delta temp', delta)
+            self.flux = self.htc * delta
             gradient = self.flux / thermal_conductivity
             ghost_val = boundary_value - dx * gradient
             return ghost_val,
