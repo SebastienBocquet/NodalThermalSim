@@ -6,7 +6,7 @@ import numpy as np
 from anytree import Node, RenderTree
 from NodalThermalSim.Solver import HALF_STENCIL
 from NodalThermalSim.Physics import FiniteDifferenceTransport, FiniteVolume
-from NodalThermalSim.Grid import GridBase, Grid1D, BoundaryConditionDirichlet
+from NodalThermalSim.Grid import GridBase, BoundaryConditionFlux
 
 
 X = 0
@@ -35,7 +35,7 @@ class Source():
 
 class Material:
 
-    """Docstring for Air. """
+    """Docstring for Material. """
 
     def __init__(self, cp, density, thermal_conductivty):
         """TODO: to be defined. """
@@ -106,7 +106,7 @@ class ConstantComponent(NodeBase):
         self.name = name
         self.y = y0
         self.material = None
-        self.grid = Grid1D(0., y0, self.RESOLUTION)
+        self.grid = GridBase(self.RESOLUTION, y0, self.DELTA_X)
 
     def check_stability(self, dt):
         pass
@@ -131,6 +131,8 @@ class Component1D(NodeBase):
     Normal orientation is: left--->right
     """
 
+    SOURCE_BOUNDARY_VALUE = {'left': 0, 'right': -1}
+
     def __init__(
         self,
         name,
@@ -146,7 +148,7 @@ class Component1D(NodeBase):
     ):
 
         super().__init__(name, surface)
-        self.grid = Grid1D(thickness, y0, resolution, dx)
+        self.grid = GridBase(resolution, y0, thickness, dx)
         self.material = material
         self.surface = surface
         self.volume = thickness * surface
@@ -165,9 +167,9 @@ class Component1D(NodeBase):
         self.outputs = outputs
 
     def check(self):
-        assert GridBase.BOUNDARY_VAL_INDEX.keys() == GridBase.GHOST_INDEX.keys()
+        pass
 
-    def get_grid(self, ax='x'):
+    def get_grid(self, ax='x') -> GridBase:
         return self.grid
 
     def update_ghost_node(self, time, ite, ax='x'):
@@ -176,10 +178,16 @@ class Component1D(NodeBase):
         assert(HALF_STENCIL == 1)
         self.source.update(time)
         for face, neigh in self.get_grid(ax).neighbours.items():
-            ghost_vals = self.get_grid(ax).boundary[face].compute(face, neigh, self.get_grid(ax).neighbour_faces[face],
-                                                    self.get_grid(ax).get_boundary_value(face),
-                                                    self.get_grid(ax).dx, self.material.thermal_conductivity)
-            self.get_grid(ax).setGhostValue(face, *ghost_vals)
+            neigh_face = self.get_grid(ax).neighbour_faces[face]
+            ghost_val, conservative_corr = self.get_grid(ax).boundary[face].compute(ite, face, neigh, neigh_face,
+                                                                  self.get_grid(ax).get_boundary_value(face),
+                                                                  self.get_grid(ax).get_first_phys_value(face),
+                                                                  self.get_grid(ax).dx, self.material.thermal_conductivity,
+                                                                  self.name)
+            self.get_grid(ax).setGhostValue(face, ghost_val)
+            self.source.y[self.SOURCE_BOUNDARY_VALUE[face]] = 0.5 * conservative_corr
+            if neigh is not None and neigh.material is not None:
+                neigh.source.y[neigh.SOURCE_BOUNDARY_VALUE[neigh_face]] = -0.5 * conservative_corr
 
 
 class Box(NodeBase):
@@ -221,13 +229,13 @@ class Box(NodeBase):
         dz = delta_z / (self.RESOLUTION - 1)
         self.axis = ['x', 'y', 'z']
         self.grid = {
-            'x': Grid1D(delta_x, y0, self.RESOLUTION, dx),
-            'y': Grid1D(delta_y, y0, self.RESOLUTION, dy),
-            'z': Grid1D(delta_z, y0, self.RESOLUTION, dz),
+            'x': GridBase(self.RESOLUTION, y0, delta_x,  dx),
+            'y': GridBase(self.RESOLUTION, y0, delta_y,  dy),
+            'z': GridBase(self.RESOLUTION, y0, delta_z,  dz),
         }
         for g in self.grid.values():
-            g.set_boundary({'left': BoundaryConditionDirichlet('non_conservative'),
-                            'right': BoundaryConditionDirichlet('non_conservative')})
+            g.set_boundary({'left': BoundaryConditionFlux(),
+                            'right': BoundaryConditionFlux()})
         self.surface = {
             'x': delta_y * delta_z,
             'y': delta_x * delta_z,
@@ -238,9 +246,31 @@ class Box(NodeBase):
         pass
 
     def check(self):
+        """
+        Check that if:
+          - the boundary condition of the box face is a heat transfer coefficient boundary
+          - the neighbour attached to this face is a Component1D
+        then the boundary condition of the neighbour on the corresponding face is also a
+        transfer coefficient boundary.
+
+        """
+        # for ax, grid in self.grid.items():
+        #     for face in grid.BOUNDARY_VAL_INDEX.keys():
+        #         bnd = grid.boundary[face]
+        #         assert type(bnd) is BoundaryConditionFlux
         pass
 
-    def get_grid(self, ax='x'):
+        # for ax, grid in self.grid.items():
+        #     for face in grid.BOUNDARY_VAL_INDEX.keys():
+        #         bnd = grid.boundary[face]
+        #         if (type(bnd) is BoundaryConditionFlux) and bnd.type == 'htc':
+        #             neighbour = grid.neighbours[face]
+        #             if type(neighbour) is Component1D:
+        #                 grid_neighbour = neighbour.get_grid(ax)
+        #                 bnd_neighbour = grid_neighbour.boundary[grid_neighbour.neighbour_faces[face]]
+        #                 assert (type(bnd_neighbour) is BoundaryConditionFlux) and bnd_neighbour.type == 'htc'
+
+    def get_grid(self, ax='x') -> GridBase:
         return self.grid[ax]
 
     def get_surface(self, ax):
@@ -253,10 +283,14 @@ class Box(NodeBase):
             # this implementation works only for 1 ghost point, ie HALF_STENCIL=1.
             # use a list of opposite index to automatically access the other link.
             for face, neigh in grid.neighbours.items():
-                ghost_vals = grid.boundary[face].compute(face, neigh, grid.neighbour_faces[face],
-                                                        grid.get_boundary_value(face),
-                                                        grid.dx, self.material.thermal_conductivity)
-                grid.setGhostValue(face, *ghost_vals)
+                ghost_val, boundary_val = grid.boundary[face].compute_box(ite, face, neigh, grid.neighbour_faces[face],
+                                                         grid.get_boundary_value(face),
+                                                         grid.get_physics_val(),
+                                                         grid.dx, self.material.thermal_conductivity,
+                                                         self.name)
+                grid.setGhostValue(face, ghost_val)
+                if boundary_val is not None:
+                    grid.setBoundaryValue(face, boundary_val)
 
 
 def create_component(

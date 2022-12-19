@@ -13,8 +13,7 @@ Y = 1
 Z = 2
 
 
-
-class GridBase(ABC):
+class GridBase():
 
     GHOST_INDEX = {'left': 0, 'right': -1}
     BOUNDARY_VAL_INDEX = {'left': 1, 'right': -2}
@@ -59,13 +58,12 @@ class GridBase(ABC):
        self.neighbour_faces = faces
        assert self.neighbours.keys() == self.neighbour_faces.keys()
 
-    @abstractmethod
-    def get_boundary_gradient(self, loc):
-        return
-
-    def setGhostValue(self, face, val, target=0.):
+    def setGhostValue(self, face, val):
+        # print('face, ghost val', face, val)
         self.val[self.GHOST_INDEX[face]] = val
-        self.ghost_target_val[face] = target
+
+    def setBoundaryValue(self, face, boundary_value):
+        self.val[self.BOUNDARY_VAL_INDEX[face]] = boundary_value
 
     def get_ghost_value(self, loc):
        return self.val[self.GHOST_INDEX[loc]]
@@ -82,50 +80,7 @@ class GridBase(ABC):
     def get_physics_val(self):
        return self.val[HALF_STENCIL:self.resolution+HALF_STENCIL]
 
-
-class Grid1D(GridBase):
-
-    """
-    Grid1D
-    number of ghost node on each side is HALF_STENCIL.
-    There are (resolution) physical nodes, plus (2 * HALF_STENCIL) ghost nodes.
-    There are (resolution-1) cells in the physical range.
-    Normal orientation is: left--->right
-    """
-
-    def __init__(
-        self,
-        thickness,
-        y0,
-        resolution=10,
-        dx=-1,
-    ):
-
-        super().__init__(resolution, y0, thickness, dx)
-        self.thickness = thickness
-
     # gradient is oriented towards the exterior of the component.
     # TODO rename loc in face
     def get_boundary_gradient(self, loc):
-        # return (self.get_boundary_value(loc) - self.get_first_phys_value(loc)) / self.dx
         return (self.get_ghost_value(loc) - self.get_boundary_value(loc)) / self.dx
-
-    def get_boundary_heat_flux(self, loc, ax='x'):
-        # two approaches: either use the local data (boundary and ghost value,
-        # relying on the fact that heat flux is conserved through the boundary.
-        # or use the neighbour heat flux.
-        # return self.get_boundary_gradient(loc, axis) * self.material.thermal_conductivity
-
-        neigh = self.neighbours[loc]
-        neighbour_face = self.neighbour_faces[loc]
-
-        if neigh is None:
-            assert self.boundary[loc].type == 'heatFlux'
-            return -self.boundary[loc].flux
-        else:
-            if neigh.material is None:
-                assert self.boundary[loc].type == 'heatFlux'
-                return -self.boundary[loc].flux
-
-        gradient_neighbour = -(neigh.get_grid(ax).get_boundary_gradient(neighbour_face))
-        return neigh.material.thermal_conductivity * gradient_neighbour

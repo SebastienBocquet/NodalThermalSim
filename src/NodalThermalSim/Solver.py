@@ -6,14 +6,15 @@ from anytree import Node, RenderTree
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
-# import pandas as pd
+import pandas as pdas
 from NodalThermalSim.Physics import OUTPUT_SIZE, T0, HALF_STENCIL, OutputComputer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+FACES = ['left', 'right']
 DEFAULT_WKDIR = Path('.')
-OUTPUT_FIG_DIR = 'Results'
+OUTPUT_FIG_DIR = '.'
 
 
 def get_time(ite, time_start, dt):
@@ -25,20 +26,30 @@ def get_time(ite, time_start, dt):
 class Output():
 
     """
-    Defines an output.
+    Defines an output. An output consists of a spatial observable and a temporal observable.
 
     Attributes:
         var_name (str): the name of the variable represented by this class.
 
+        index_temporal (int): index of the grid (numbering starts on left side) at which data
+        is extracted for the temporal observables. Used only for spatial_type=instantaneous.
+        By default, extraction is at middle index.
+
+        spatial_type (str): type of post-processing for spatial observables: raw or mean.
+
+        temporal_type (str): type of post-processing for temporal observables
+
+        loc (str): location of spatial observable extraction. Can be all, left or right.
+        If left or right, the corresponding boundary value is extracted.
+
     """
 
-    def __init__(self, var_name, index_temporal=-1, spatial_type='raw', temporal_type='instantaneous', loc='all'):
+    def __init__(self, var_name, index_temporal=-1, spatial_type='raw', loc='all'):
 
         self.var_name = var_name
         self.loc = loc
         self.index_temporal = index_temporal
         self.spatial_type = spatial_type
-        self.temporal_type = temporal_type
         self.x = np.empty((1))
         self.temporal_result = np.empty((1))
         self.result = np.empty((1,1))
@@ -61,6 +72,7 @@ class Post():
                 if output.index_temporal == -1:
                     output.index_temporal = (int)(output.size/2)
             else:
+                assert output.loc == 'left' or output.loc == 'right'
                 output.size = 1
                 output.x = np.array([c.get_grid().x[c.get_grid().BOUNDARY_VAL_INDEX[output.loc]]])
         elif output.spatial_type == 'mean':
@@ -99,6 +111,9 @@ class Observer:
     """Docstring for Observer. 
     """
 
+    # number of hours above which temporal axis switches to hours instead of seconds.
+    NB_HOUR_THRESHOLD_FOR_TEMPORAL_AXIS = 3
+
     def __init__(self, time_start, time_period, time_end, dt):
         """TODO: to be defined. """
 
@@ -108,7 +123,7 @@ class Observer:
         self.time_end = time_end
         self.time_period = time_period
         self.dt = dt
-        self.nb_frames = (int)((time_end - time_start) / time_period)
+        self.nb_frames = (int)((time_end - time_start) / time_period) + 1
         self.ite_extraction = np.empty((self.nb_frames))
         print("Number of data extractions:", self.nb_frames)
         assert self.time_period >= dt
@@ -118,10 +133,6 @@ class Observer:
             self.ite_extraction[i] = (int)(self.ite_start + i * self.ite_period)
         print("Extraction period (in ite):", (int)(self.time_period / self.dt))
         print('Data are extracted at iterations:', self.ite_extraction)
-        # data = []
-        # for i in range(self.nb_frames):
-        #     data.append(np.zeros((nb_data_per_time)))
-        # self.ts = pd.Series(data, range(self.nb_frames))
         self.update_count = 0
         self.temporal_axis = []
 
@@ -145,23 +156,35 @@ class Observer:
         return ite in self.ite_extraction
 
     def plot(self, c, output_dir):
+        data = {}
         for io, output in enumerate(c.outputs):
+            for i, time in enumerate(self.temporal_axis):
+                data[f'{time: .2f}'] = output.result[:,i]
+            df = pdas.DataFrame.from_dict(data)
+            suffix = ''
+            if output.loc in FACES:
+               suffix = f'_at_face_{output.loc}'
+            df.to_csv(output_dir / f'Component_{c.name}_raw_value_of_{output.var_name}{suffix}.csv', sep=':')
             fig, ax = plt.subplots()
             for i in range(self.nb_frames):
                 time = get_time(self.ite_extraction[i], self.time_start, self.dt)
                 ax.plot(output.x, output.result[:, i], '-o', label="t=%ds" % time, linewidth=2.0)
             ax.legend()
-            plt.title(f"Component {c.name}\n raw value of {output.var_name}")
-            plt.savefig(output_dir / f"Component_{c.name}_raw_{output.var_name}.png")
+            plt.title(f"Component {c.name}\n raw value of {output.var_name}{suffix}")
+            plt.savefig(output_dir / f"Component_{c.name}_raw_{output.var_name}{suffix}.png")
             plt.close()
 
     def plot_temporal(self, c, output_dir):
+        self.temporal_axis = np.array(self.temporal_axis)
         for io, output in enumerate(c.outputs):
             fig, ax = plt.subplots()
+            unit_time = 's'
+            if self.temporal_axis[-1] > self.NB_HOUR_THRESHOLD_FOR_TEMPORAL_AXIS * 3600:
+                self.temporal_axis /= 3600
+                unit_time = 'h'
             ax.plot(self.temporal_axis, np.array(output.temporal_result), '-o', label=f"{output.var_name}", linewidth=2.0)
             ax.legend()
-            loc = 0
-            loc_prefix = ''
+            # ax.xlabel(f'({unit_time})')
             if output.spatial_type == 'raw':
                 loc_prefix = 'at loc_'
                 if output.loc == 'all':
@@ -171,17 +194,17 @@ class Observer:
             else:
                 loc_prefix = ''
                 loc = ''
-            plt.title(f"Component {c.name}\n {output.temporal_type} value of\n {output.spatial_type} spatial "
+            plt.title(f"Component {c.name}\n instantaneous value of\n {output.spatial_type} spatial "
                       f"{output.var_name} {loc_prefix}{loc}")
-            # loc should be in meter or in percentage of thickness
             plt.savefig(output_dir /
-                        f"Component_{c.name}_{output.temporal_type}_of_{output.spatial_type}_spatial_{output.var_name}_{loc_prefix}{loc}.png")
+                        f"Component_{c.name}_instantaneous_value_of_{output.spatial_type}_spatial_{output.var_name}_{loc_prefix}{loc}.png")
             plt.close()
 
 class Solver:
 
     """Docstring for Solver. """
 
+    # number of prints during the time marching.
     NB_STATUS = 10
 
     def __init__(self, component_list, dt, time_end, observer, time_start = 0., solver_type='implicit'):
@@ -221,11 +244,9 @@ class Solver:
                 message = 'first 100 values'
                 phys_values = c.get_grid().get_physics_val()[:100]
             print(f'Component physical values ({message}):', phys_values)
-            print(f"Actual ghost values: left={c.get_grid().get_ghost_value('left')}, "
+            print(f'Component source values ({message}):', c.source.y)
+            print(f"Ghost values: left={c.get_grid().get_ghost_value('left')}, "
                   f"right={c.get_grid().get_ghost_value('right')}")
-            print(f"Target ghost values: left={c.get_grid().ghost_target_val['left']}, "
-                  f"right={c.get_grid().ghost_target_val['right']}")
-            print("--")
         print('')
 
     def run(self):
@@ -239,13 +260,13 @@ class Solver:
             time = get_time(ite, self.time_start, self.dt)
             # mlflow.log_metric('iteration', ite)
             # mlflow.log_metric('time', time)
-            if ite % intermediate_status_period == 0:
-                self.show_status(ite, time)
             for c in self.components:
                 c.update_ghost_node(time, ite)
                 if self.observer is not None:
                     if self.observer.is_updated(ite):
                         self.observer.update_components(c, self.post)
+            if ite % intermediate_status_period == 0:
+                self.show_status(ite, time)
             for c in self.components:
                 c.physics.advance_time(self.dt, c, ite, self.solver_type)
             # TODO put is_updated in update function. put component loop in update function.

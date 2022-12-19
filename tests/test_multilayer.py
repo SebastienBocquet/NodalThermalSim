@@ -4,6 +4,7 @@ import copy
 import logging
 import numpy as np
 from pytest import approx
+from comparisons import *
 from NodalThermalSim.Component import ConstantComponent, Material, Component1D
 from NodalThermalSim.Solver import Solver, Observer, Output
 from NodalThermalSim.Physics import FiniteDifferenceTransport
@@ -17,7 +18,7 @@ IMPLICIT_DT_FACTOR = 5
 T0 = 273.15 + 25.
 INIT_WALL_TEMPERATURE = T0
 EXTERIOR_TEMPERATURE = 273.15 + 33.
-FLUX = -200.
+FLUX = 200.
 INTERIOR_TEMPERATURE = T0
 
 CP_AIR = 1000.
@@ -55,7 +56,7 @@ if SOLVER_TYPE == 'implicit':
     DT *= IMPLICIT_DT_FACTOR
 
 TIME_START = 0.
-TIME_END = 48 * 3600
+TIME_END = 96 * 3600
 NB_FRAMES = 5
 OBSERVER_PERIOD = (int)(TIME_END / NB_FRAMES)
 
@@ -68,6 +69,8 @@ bc_diri = BoundaryConditionDirichlet(type='conservative')
 bc_adia = BoundaryConditionFlux()
 bc_flux_left = BoundaryConditionFlux(flux=FLUX)
 bc_flux_right = BoundaryConditionFlux(flux=-FLUX)
+
+air_interior = ConstantComponent('air_interior', INTERIOR_TEMPERATURE)
 wall_left = Component1D('wall_left', brick1, THICKNESS, INIT_WALL_TEMPERATURE,
                         FiniteDifferenceTransport(),
                         [output_temperature, output_heat_flux],
@@ -84,10 +87,11 @@ wall_right = Component1D('wall_right', brick3, THICKNESS, INIT_WALL_TEMPERATURE,
 wall_left.get_grid().set_neighbours({'left': None, 'right': wall_middle})
 wall_left.get_grid().set_boundary({'left': bc_flux_left, 'right': bc_diri})
 
-wall_right.get_grid().set_neighbours({'left': wall_middle, 'right': None})
-wall_right.get_grid().set_boundary({'left': bc_diri, 'right': bc_flux_right})
+wall_right.get_grid().set_neighbours({'left': wall_middle, 'right': air_interior})
+wall_right.get_grid().set_boundary({'left': bc_diri, 'right': bc_diri})
 
 wall_middle.get_grid().set_neighbours({'left': wall_left, 'right': wall_right})
+wall_middle.get_grid().set_boundary({'left': bc_diri, 'right': bc_diri})
 
 def test_wall_air_wall():
     # check that the 'electric resistance' analogy is respected.
@@ -99,17 +103,17 @@ def test_wall_air_wall():
     thermal_conductivities = [K_BRICK, K_BRICK_2, K_BRICK_3]
     for i in range(len(component_to_solve_list)):
         # check conservation of heat flux through all layers
-        assert np.allclose(component_to_solve_list[i].outputs[1].result[:,NB_FRAMES-1], expected_flux, rtol=0.01)
+        assert np.allclose(component_to_solve_list[i].outputs[1].result[:,NB_FRAMES-1], expected_flux, atol=0.04*FLUX)
         # check that temperature profile is linear
         # and its slope corresponds to the thermal resistance analogy
         resistance = THICKNESS / (YZ_SURFACE * thermal_conductivities[i])
-        expected_grad_temp = np.ones((RESOLUTION)) * resistance * (FLUX * YZ_SURFACE) / THICKNESS
+        expected_grad_temp = -np.ones((RESOLUTION)) * resistance * (FLUX * YZ_SURFACE) / THICKNESS
         grad_temp = np.diff(component_to_solve_list[i].outputs[0].result[:, NB_FRAMES - 1]) / DX
-        assert np.allclose(grad_temp, expected_grad_temp, rtol=0.01)
+        assert np.allclose(grad_temp, expected_grad_temp, atol=ATOL_GRAD)
     # check continuity of temperature profile
     tp_wall_left_bnd_right = wall_left.get_grid().get_boundary_value('right')
     tp_wall_middle_bnd_left = wall_middle.get_grid().get_boundary_value('left')
-    assert tp_wall_middle_bnd_left == approx(tp_wall_left_bnd_right)
+    assert tp_wall_middle_bnd_left == approx(tp_wall_left_bnd_right, abs=ATOL)
 
 def test_show_tree():
     component_to_solve_list = [wall_left, wall_middle, wall_right]
