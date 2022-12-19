@@ -3,11 +3,10 @@ import os
 import copy
 import numpy as np
 from pytest import approx
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
-from Component import ConstantComponent, Material, Box, Component1D
-from Solver import Solver, Observer, Output
-from Physics import FiniteDifferenceTransport
-from Grid import BoundaryConditionDirichlet, BoundaryConditionFlux
+from NodalThermalSim.Component import ConstantComponent, Material, Box, Component1D
+from NodalThermalSim.Solver import Solver, Observer, Output
+from NodalThermalSim.Physics import FiniteDifferenceTransport
+from NodalThermalSim.Grid import BoundaryConditionDirichlet, BoundaryConditionFlux
 
 T0 = 273.15 + 25.
 EXTERIOR_TEMPERATURE = 273.15 + 33.

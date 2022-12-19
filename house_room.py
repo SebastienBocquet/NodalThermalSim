@@ -6,10 +6,10 @@ from pathlib import Path
 import numpy as np
 from pytest import approx
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
-from Component import ConstantComponent, Material, Component1D, Box
-from Solver import Solver, Observer, Output
-from Physics import FiniteDifferenceTransport
-from Grid import BoundaryConditionDirichlet, BoundaryConditionFlux
+from NodalThermalSim.Component import ConstantComponent, Material, Component1D, Box
+from NodalThermalSim.Solver import Solver, Observer, Output
+from NodalThermalSim.Physics import FiniteDifferenceTransport
+from NodalThermalSim.Grid import BoundaryConditionDirichlet, BoundaryConditionFlux
 
 SOLVER_TYPE = 'implicit'
 IMPLICIT_DT_FACTOR = 40

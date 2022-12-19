@@ -1,13 +1,13 @@
 import copy
 import logging
-import mlflow
-from mlflow import log_metric, log_param, log_artifacts
+# import mlflow
+# from mlflow import log_metric, log_param, log_artifacts
 from anytree import Node, RenderTree
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
-import pandas as pd
-from Physics import OUTPUT_SIZE, T0, HALF_STENCIL, OutputComputer
+# import pandas as pd
+from NodalThermalSim.Physics import OUTPUT_SIZE, T0, HALF_STENCIL, OutputComputer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

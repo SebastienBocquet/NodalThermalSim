@@ -4,9 +4,9 @@ logger = logging.getLogger(__name__)
 from abc import ABC, abstractmethod
 import numpy as np
 from anytree import Node, RenderTree
-from Solver import HALF_STENCIL
-from Physics import FiniteDifferenceTransport, FiniteVolume
-from Grid import GridBase, Grid1D, BoundaryConditionDirichlet
+from NodalThermalSim.Solver import HALF_STENCIL
+from NodalThermalSim.Physics import FiniteDifferenceTransport, FiniteVolume
+from NodalThermalSim.Grid import GridBase, Grid1D, BoundaryConditionDirichlet
 
 
 X = 0

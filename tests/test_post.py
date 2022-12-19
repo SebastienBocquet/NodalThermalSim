@@ -2,10 +2,9 @@ import sys
 import os
 import numpy as np
 from pytest import approx
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
-from Component import ConstantComponent, Material, Component1D
-from Solver import Solver, Observer, Output
-from Physics import FiniteDifferenceTransport
+from NodalThermalSim.Component import ConstantComponent, Material, Component1D
+from NodalThermalSim.Solver import Solver, Observer, Output
+from NodalThermalSim.Physics import FiniteDifferenceTransport
 
 T0 = 273.15 + 25.
 EXTERIOR_TEMPERATURE = 273.15 + 33.

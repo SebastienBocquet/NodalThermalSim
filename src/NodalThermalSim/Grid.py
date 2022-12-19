@@ -4,8 +4,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 from abc import ABC, abstractmethod
 import numpy as np
-from Solver import HALF_STENCIL
-from Physics import BoundaryConditionFlux, BoundaryConditionDirichlet
+from NodalThermalSim.Solver import HALF_STENCIL
+from NodalThermalSim.Physics import BoundaryConditionFlux, BoundaryConditionDirichlet
 
 
 X = 0
