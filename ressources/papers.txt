@@ -1,0 +1,6 @@
+House thermal simulator based on a RC wall model and a HVAC.
+Comparison to other simulators and exprimental data (BESTEST)
+https://www.google.fr/url?sa=t&source=web&rct=j&url=https://mdpi-res.com/d_attachment/energies/energies-12-02938/article_deploy/energies-12-02938.pdf%3Fversion%3D1564558756&ved=2ahUKEwiQstipuKH8AhUYRKQEHSYkCB8QFnoECAwQAQ&usg=AOvVaw1B5mzLu2hTWfZR7ulrEl9b
+
+Impact of buildings The Impact of Surface Convective Heat Transfer Coefficients on the Simulated Building Energy Consumption and Surface Temperatures
+https://www.researchgate.net/publication/266375149_Environmental_impact_of_buildings_The_Impact_of_Surface_Convective_Heat_Transfer_Coefficients_on_the_Simulated_Building_Energy_Consumption_and_Surface_Temperatures#pf3
