@@ -53,12 +53,12 @@ def test_observer():
 
     # TODO check extreme setup. Especially the case of a single frame (typically the last one).
     observed_ite = []
-    for i in range(NB_FRAMES):
+    for i in range(NB_FRAMES + 1):
         ite_observation = (int)(i * (int)(OBSERVER_PERIOD / DT))
         observed_ite.append(ite_observation)
     assert (observed_ite == observer.ite_extraction).all()
 
-    for i in range(NB_FRAMES):
+    for i in range(NB_FRAMES + 1):
         ite_observation = (int)(i * (int)(OBSERVER_PERIOD / DT))
         observed_ite.append(ite_observation)
         print(ite_observation)
@@ -67,7 +67,7 @@ def test_observer():
     component_to_solve_list = [room]
     solver = Solver(component_to_solve_list, DT, TIME_END, observer)
     solver.run()
-    assert observer.update_count == NB_FRAMES
+    assert observer.update_count == NB_FRAMES + 1
 
 
 def test_observer_ite0():
@@ -77,16 +77,17 @@ def test_observer_ite0():
     room.get_grid().set_neighbours(neighbours)
 
     # TODO check extreme setup. Especially the case of a single frame (typically the last one).
-    expected_observed_ite = 0
-    observed_ite = [expected_observed_ite]
+    expected_observed_ite = [0, 1]
+    observed_ite = expected_observed_ite
     print(observer.ite_extraction)
     assert (observed_ite == observer.ite_extraction).all()
-    assert observer.is_updated(expected_observed_ite) is True
+    for ite in observed_ite:
+        assert observer.is_updated(ite) is True
 
     component_to_solve_list = [room]
     solver = Solver(component_to_solve_list, DT, TIME_START + DT, observer)
     solver.run()
-    assert observer.update_count == 1
+    assert observer.update_count == 2
 
 
 def test_raw_output():
@@ -102,8 +103,8 @@ def test_raw_output():
     assert output_temperature.size == RESOLUTION
     assert output_temperature.x == approx(X_PHYSICS)
     assert (output_temperature.result[:,0] == INIT_AIR_TEMPERATURE).all()
-    assert len(observer.temporal_axis) == 1
-    assert observer.temporal_axis[:] == [TIME_START]
+    assert len(observer.temporal_axis) == 2
+    assert (observer.temporal_axis == [TIME_START, TIME_START + DT]).all()
     assert output_temperature.temporal_result[0] == INIT_AIR_TEMPERATURE[INDEX_TEMPORAL_DEFAULT]
 
 
@@ -133,7 +134,7 @@ def test_spatial_avg_output():
     assert output_temperature_space_avg.size == 1
     assert (output_temperature_space_avg.x == [X_PHYSICS[INDEX_TEMPORAL_DEFAULT]]).all()
     assert (output_temperature_space_avg.result[:,0] == [np.mean(INIT_AIR_TEMPERATURE)]).all()
-    assert len(observer.temporal_axis) == 1
+    assert len(observer.temporal_axis) == 2
     assert output_temperature_space_avg.temporal_result[0] == np.mean(INIT_AIR_TEMPERATURE)
 
 def test_gradient_output():
@@ -164,7 +165,7 @@ def test_boundary_output():
     assert output_gradient_left.size == 1
     assert output_gradient_left.x == approx([0.])
     assert output_gradient_left.result[0,0] == approx(expected_value)
-    assert len(observer.temporal_axis) == 1
+    assert len(observer.temporal_axis) == 2
     assert output_gradient_left.temporal_result[0] == approx(expected_value)
 
 def test_two_outputs():
@@ -182,8 +183,8 @@ def test_two_outputs():
     assert output_temperature_space_avg.size == 1
     assert (output_temperature_space_avg.x == [X_PHYSICS[INDEX_TEMPORAL_DEFAULT]]).all()
     assert (output_temperature_space_avg.result[:,0] == [np.mean(INIT_AIR_TEMPERATURE)]).all()
-    assert len(observer.temporal_axis) == 1
-    assert (output_temperature_space_avg.temporal_result == [np.mean(INIT_AIR_TEMPERATURE)]).all()
+    assert len(observer.temporal_axis) == 2
+    assert output_temperature_space_avg.temporal_result[0] == [np.mean(INIT_AIR_TEMPERATURE)]
 
     assert output_gradient.result[:,0] == approx(np.diff(INIT_AIR_TEMPERATURE) / DX)
     assert output_gradient.temporal_result[0] == approx(T0 / DX)

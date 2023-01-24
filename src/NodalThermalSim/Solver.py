@@ -256,7 +256,7 @@ class Solver:
         intermediate_status_period = max(1, (int)(self.nb_ite / self.NB_STATUS))
         # mlflow.log_param('nb_ite', self.nb_ite)
         # mlflow.log_param('timestep', self.dt)
-        for ite in range(0, self.nb_ite):
+        for ite in range(0, self.nb_ite+1):
             time = get_time(ite, self.time_start, self.dt)
             # mlflow.log_metric('iteration', ite)
             # mlflow.log_metric('time', time)

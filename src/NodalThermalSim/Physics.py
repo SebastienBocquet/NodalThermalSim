@@ -149,9 +149,10 @@ class BoundaryConditionDirichlet:
             ghost_target = 0.
             if self.type == 'conservative':
                 if neigh.material is None:
-                    logger.log(logging.WARNING, "Conservative Dirichlet boundary condition cannot be activated \
-                                because it requires that the neighbour component defines a material. \
-                                Switch to non conservative boundary.")
+                    if ite % DISPLAY_PERIOD == 0:
+                        logger.log(logging.WARNING, "Conservative Dirichlet boundary condition cannot be activated \
+                                    because it requires that the neighbour component defines a material. \
+                                    Switch to non conservative boundary.")
                     return ghost_val, 0.
                 from NodalThermalSim.Component import Box
                 if type(neigh) is Box:
