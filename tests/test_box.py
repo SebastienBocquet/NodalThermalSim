@@ -102,10 +102,11 @@ def test_solver_box_flux():
      expected_increase_rate = 2 * FLUX / (DELTA_X * air.density * air.cp)
      assert increase_rate == approx(expected_increase_rate)
 
+
 def test_solver_box_htc_constant_component_neighbours():
-     # box has opposite flux on the x-left and x-right faces, and adiabatic on other faces.
+     # box has HTC BC on the x-left and x-right faces, and adiabatic on other faces.
      box = Box('box', air, DELTA_X, DELTA_Y, DELTA_Z,
-               INIT_BOX_TEMPERATURE, [output_temperature_box])
+               INIT_BOX_TEMPERATURE, [output_temperature_box, output_heat_flux_left_box, output_heat_flux_right_box])
      # box.get_grid('x').set_neighbours({'left': wall_left, 'right': wall_right})
      box.get_grid('x').set_neighbours({'left': air_exterior, 'right': air_exterior})
      box.get_grid('x').set_boundary({'left': BoundaryConditionFlux(type='htc', htc=HTC),
@@ -113,8 +114,12 @@ def test_solver_box_htc_constant_component_neighbours():
      box.get_grid('y').set_boundary({'left': bc_adia, 'right': bc_adia})
      box.get_grid('z').set_boundary({'left': bc_adia, 'right': bc_adia})
      component_to_solve_list = [box]
-     observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, DT)
-     solver = Solver(component_to_solve_list, DT, TIME_END, observer)
+     # Due to the HTC condition, temperature increases and then reaches a plateau.
+     # Reduce simulation time to remain in the increasing temperature region.
+     time_end = 0.5 * TIME_END
+     observer_period = 0.5 * OBSERVER_PERIOD
+     observer = Observer(TIME_START, observer_period, time_end, DT)
+     solver = Solver(component_to_solve_list, DT, time_end, observer)
      solver.run()
      solver.visualize()
      # test that the rate at which temperature increases in the box is equal to the sum of heat flux
@@ -129,22 +134,24 @@ def test_solver_box_htc_constant_component_neighbours():
      assert increase_rate == approx(expected_increase_rate, rel=0.05)
 
 def test_solver_box_wall_htc_1D_component_neighbours():
-     # box is connected to walls on the x-left and x-right faces, and adiabatic on other faces.
+     # box is connected to walls with HTC BC on the x-left and x-right faces, and adiabatic on other faces.
      box = Box('box', air, DELTA_X, DELTA_Y, DELTA_Z,
                INIT_BOX_TEMPERATURE, [output_temperature_box, output_heat_flux_left_box,
                                       output_heat_flux_right_box])
      box.get_grid('x').set_neighbours({'left': wall_left, 'right': wall_right})
      wall_left.get_grid().set_neighbours({'left': air_exterior, 'right': box})
      wall_right.get_grid().set_neighbours({'left': box, 'right': air_exterior})
-     htc = 8.
+     htc = 2.
      bc_htc = BoundaryConditionFlux(type='htc', htc=htc)
      box.get_grid('x').set_boundary({'left': bc_htc,
                                      'right': bc_htc})
      wall_left.get_grid().set_boundary({'left': bc_diri, 'right': bc_htc})
      wall_right.get_grid().set_boundary({'left': bc_htc, 'right': bc_diri})
      component_to_solve_list = [wall_left, box, wall_right]
-     observer = Observer(TIME_START, OBSERVER_PERIOD, TIME_END, DT)
-     solver = Solver(component_to_solve_list, DT, TIME_END, observer)
+     time_end = 0.5 * TIME_END
+     observer_period = 0.5 * OBSERVER_PERIOD
+     observer = Observer(TIME_START, observer_period, time_end, DT)
+     solver = Solver(component_to_solve_list, DT, time_end, observer)
      solver.run()
      solver.visualize()
      # TODO: output time 0 is non physical.

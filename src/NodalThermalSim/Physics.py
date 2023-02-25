@@ -93,7 +93,7 @@ class BoundaryConditionFlux:
         self.htc = htc
         self.ref_temperature = ref_temperature
 
-    def compute(self, ite, face, neigh, neighbour_face, boundary_value, vals, dx, thermal_conductivity, name=None):
+    def compute(self, ite, face, neigh, neighbour_face, boundary_value, first_phys_val, dx, thermal_conductivity, name=None):
         # flux = - thermal_conductivity * gradient.
         # But gradient is oriented outwards, and flux is oriented inwards.
         # So flux = thermal_conductivity * gradient.
@@ -118,12 +118,12 @@ class BoundaryConditionFlux:
             else:
                 ref_temperature_ = neigh_value
                 # ref_temperature_ = boundary_value - gradient_neighbour * self.NB_DX_DIST_BND_TO_REF_PT * dx
-            delta = ref_temperature_ - np.mean(vals)
-            delta = ref_temperature_ - boundary_value
+            # delta = ref_temperature_ - np.mean(vals)
+            delta = ref_temperature_ - first_phys_val
             self.flux = self.htc * delta
             gradient = self.flux / thermal_conductivity
             ghost_val = boundary_value + dx * gradient
-            if ite % DISPLAY_PERIOD == 0:
+            if ite % 1000 == 0:
                 print(f'Flux BC for face {face} of component {name}: \n \
                       bnd temperature is {boundary_value: .2f} \n \
                       ref temperature is {ref_temperature_: .2f} \n \
@@ -135,7 +135,7 @@ class BoundaryConditionFlux:
 
     def compute_box(self, ite, face, neigh, neighbour_face, boundary_value, vals, dx, thermal_conductivity, name=None):
         ghost_val = self.compute(ite, face, neigh, neighbour_face, boundary_value, vals, dx, thermal_conductivity, name)
-        return ghost_val, None
+        return ghost_val[0], None
 
 
 class BoundaryConditionDirichlet:

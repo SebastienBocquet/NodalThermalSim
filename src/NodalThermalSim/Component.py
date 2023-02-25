@@ -197,6 +197,8 @@ class Box(NodeBase):
 
     RESOLUTION = 3
 
+    SOURCE_BOUNDARY_VALUE = {'left': 0, 'right': -1}
+
     def __init__(
         self,
         name,
@@ -285,7 +287,7 @@ class Box(NodeBase):
             for face, neigh in grid.neighbours.items():
                 ghost_val, boundary_val = grid.boundary[face].compute_box(ite, face, neigh, grid.neighbour_faces[face],
                                                          grid.get_boundary_value(face),
-                                                         grid.get_physics_val(),
+                                                         grid.get_first_phys_value(face),
                                                          grid.dx, self.material.thermal_conductivity,
                                                          self.name)
                 grid.setGhostValue(face, ghost_val)
