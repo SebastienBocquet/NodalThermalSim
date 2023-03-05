@@ -3,6 +3,7 @@ import os
 import copy
 import logging
 import numpy as np
+import pytest
 from pytest import approx
 from comparisons import *
 from NodalThermalSim.Component import ConstantComponent, Material, Component1D
@@ -92,6 +93,11 @@ wall_right.get_grid().set_boundary({'left': bc_diri, 'right': bc_diri})
 
 wall_middle.get_grid().set_neighbours({'left': wall_left, 'right': wall_right})
 wall_middle.get_grid().set_boundary({'left': bc_diri, 'right': bc_diri})
+
+@pytest.mark.xfail(raises=ValueError)
+def test_all_components_requiring_time_advance_are_solved():
+    component_to_solve_list = [wall_middle, wall_right]
+    solver = Solver(component_to_solve_list, DT, TIME_END, observer, solver_type=SOLVER_TYPE)
 
 def test_wall_air_wall():
     # check that the 'electric resistance' analogy is respected.

@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 import pandas as pdas
+
 from NodalThermalSim.Physics import OUTPUT_SIZE, T0, HALF_STENCIL, OutputComputer
 
 logging.basicConfig(level=logging.INFO)
@@ -218,6 +219,24 @@ class Solver:
         self.post = Post()
         self.observer = observer
         self.node = Node('')
+        # check that the non-constant neighbour of a component is the list of components to solve.
+        from NodalThermalSim.Component import Component1D, ConstantComponent, Box
+        for c in self.components:
+            print(f"checked component: {c.name}")
+            neighbours_to_check = []
+            if type(c) is Component1D:
+                neighbours_to_check.append(c.grid.neighbours)
+            elif type(c) is Box:
+                for grid in c.grid.values():
+                    neighbours_to_check.append(grid.neighbours)
+            for neighbours in neighbours_to_check:
+                for neigh in neighbours.values():
+                    if neigh is not None and type(neigh) is not ConstantComponent:
+                        if not neigh in self.components:
+                            logger.info(f"Component {neigh.name} is a neighbour component of one of the components \
+                            to solve, and requires time advance and thus to be included in the components to solve.")
+                            # raise ValueError(f"Component {neigh.name} is a neighbour component of one of the components \
+                            # to solve, and requires time advance and thus to be included in the components to solve.")
         for c in self.components:
             c.check()
             if self.solver_type == 'explicit':
