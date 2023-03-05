@@ -125,7 +125,7 @@ class BoundaryConditionFlux:
             ghost_val = boundary_value + dx * gradient
             if ite % 1000 == 0:
                 print(f'Flux BC for face {face} of component {name}: \n \
-                      bnd temperature is {boundary_value: .2f} \n \
+                      bnd temperature is {first_phys_val: .2f} \n \
                       ref temperature is {ref_temperature_: .2f} \n \
                       delta temperature is {delta: .2f}, \n \
                       flux is {self.flux: .2f}')
