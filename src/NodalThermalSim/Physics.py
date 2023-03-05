@@ -58,9 +58,9 @@ class OutputComputer(OutputComputerBase):
     def compute_var(self, c, output):
         if output.var_name == 'temperature':
             if output.loc == 'all':
-                return c.get_grid().get_physics_val()
+                return c.get_grid().get_physics_val() - T0
             else:
-                return np.array([c.get_grid().get_boundary_value(output.loc)])
+                return np.array([c.get_grid().get_boundary_value(output.loc)]) - T0
         elif output.var_name == 'temperature_gradient':
             if output.loc == 'all':
                 return np.diff(c.get_grid().get_physics_val()) / c.get_grid().dx
